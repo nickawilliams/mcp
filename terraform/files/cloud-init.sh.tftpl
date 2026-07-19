@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# MCP host bootstrap, rendered by Terraform. Shell expansion is escaped so it
+# survives templating. Config + secrets are pulled from SSM at boot; nothing
+# sensitive is baked into user_data.
+set -euo pipefail
+
+REGION="${region}"
+PREFIX="${path_prefix}"
+APP_DIR="/opt/mcp"
+DATA_DEV="/dev/nvme1n1" # the attached EBS data volume (Nitro naming)
+
+# --- SSM agent (present on standard AL2023; ensure it is up for debugging) ---
+systemctl enable --now amazon-ssm-agent || true
+
+# --- Docker + compose + buildx plugins --------------------------------------
+dnf install -y docker
+systemctl enable --now docker
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
+	-o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+# buildx: docker compose build needs >= 0.17, but AL2023 ships 0.12, so pin one
+curl -fsSL "https://github.com/docker/buildx/releases/download/v0.19.0/buildx-v0.19.0.linux-arm64" \
+	-o /usr/local/lib/docker/cli-plugins/docker-buildx
+chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
+
+# --- Persistent data volume (format once, then mount) -----------------------
+mkdir -p "$${APP_DIR}"
+if ! blkid "$${DATA_DEV}" >/dev/null 2>&1; then
+	mkfs.ext4 -L mcp-data "$${DATA_DEV}"
+fi
+grep -q "$${APP_DIR}/data" /etc/fstab ||
+	echo "LABEL=mcp-data $${APP_DIR}/data ext4 defaults,nofail 0 2" >>/etc/fstab
+mkdir -p "$${APP_DIR}/data"
+mount "$${APP_DIR}/data"
+mkdir -p "$${APP_DIR}/data/falkordb" "$${APP_DIR}/data/caddy" "$${APP_DIR}/data/caddy-config"
+
+# --- Config from SSM (String params) ----------------------------------------
+for f in docker-compose.yml Caddyfile graphiti-config.yaml Dockerfile.caddy; do
+	aws ssm get-parameter --region "$${REGION}" --name "/$${PREFIX}/config/$${f}" \
+		--query Parameter.Value --output text >"$${APP_DIR}/$${f}"
+done
+
+# --- Secrets from SSM (SecureString) -> .env (root-only) --------------------
+umask 077
+: >"$${APP_DIR}/.env"
+for s in OPENAI_API_KEY MCP_BEARER_TOKEN FALKORDB_PASSWORD; do
+	val="$$(aws ssm get-parameter --region "$${REGION}" --with-decryption \
+		--name "/$${PREFIX}/secrets/$${s}" --query Parameter.Value --output text)"
+	echo "$${s}=$${val}" >>"$${APP_DIR}/.env"
+done
+umask 022
+
+# --- Launch -----------------------------------------------------------------
+cd "$${APP_DIR}"
+docker compose up -d --build

@@ -1,0 +1,63 @@
+# MCP host stack: Caddy (public TLS + bearer auth) -> graphiti-mcp -> FalkorDB.
+# Only Caddy publishes to the world (80/443). graphiti and FalkorDB expose their
+# ports on the compose network for Caddy, and bind to 127.0.0.1 for SSM-tunnel
+# debugging only — never to the public interface. Interpolation here is
+# docker-compose's ${VAR:-default}; values come from ./.env (secrets from SSM).
+services:
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - AWS_REGION=us-west-1
+      - MCP_BEARER_TOKEN=${MCP_BEARER_TOKEN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./data/caddy:/data
+      - ./data/caddy-config:/config
+    depends_on:
+      - graphiti-mcp
+
+  graphiti-mcp:
+    image: zepai/knowledge-graph-mcp:standalone
+    restart: unless-stopped
+    depends_on:
+      falkordb:
+        condition: service_healthy
+    environment:
+      - FALKORDB_URI=redis://falkordb:6379
+      - FALKORDB_DATABASE=default_db
+      - GRAPHITI_GROUP_ID=main
+      - SEMAPHORE_LIMIT=10
+      - GRAPHITI_TELEMETRY_ENABLED=false
+      - CONFIG_PATH=/app/mcp/config/config.yaml
+      - MODEL_NAME=gpt-4.1-mini
+      - EMBEDDER_MODEL=text-embedding-3-small
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    volumes:
+      - ./graphiti-config.yaml:/app/mcp/config/config.yaml:ro
+    ports:
+      - "127.0.0.1:8000:8000" # debug via SSM tunnel only
+    command: ["uv", "run", "main.py"]
+
+  falkordb:
+    image: falkordb/falkordb:latest
+    restart: unless-stopped
+    environment:
+      - BROWSER=1
+    volumes:
+      - ./data/falkordb:/var/lib/falkordb/data
+    ports:
+      - "127.0.0.1:6379:6379" # debug via SSM tunnel only
+      - "127.0.0.1:3000:3000" # FalkorDB browser UI, SSM tunnel only
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s

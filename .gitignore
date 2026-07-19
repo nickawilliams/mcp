@@ -1,0 +1,9 @@
+# Terraform
+**/.terraform/*
+**/out/*
+**/.env
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log

@@ -1,0 +1,37 @@
+# Graphiti MCP config — OpenAI (LLM + embeddings) + FalkorDB.
+# Delivered to the host from SSM; uses graphiti's OWN ${VAR:default}
+# interpolation (single colon), resolved from the container env at runtime.
+server:
+  transport: "http"
+  host: "0.0.0.0"
+  port: 8000
+
+llm:
+  provider: "openai"
+  model: ${MODEL_NAME:gpt-4.1-mini}
+  max_tokens: 4096
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+      api_url: ${OPENAI_API_URL:https://api.openai.com/v1}
+
+embedder:
+  provider: "openai"
+  model: ${EMBEDDER_MODEL:text-embedding-3-small}
+  dimensions: 1536
+  providers:
+    openai:
+      api_key: ${OPENAI_API_KEY}
+      api_url: ${OPENAI_API_URL:https://api.openai.com/v1}
+
+database:
+  provider: "falkordb"
+  providers:
+    falkordb:
+      uri: ${FALKORDB_URI:redis://falkordb:6379}
+      password: ${FALKORDB_PASSWORD:}
+      database: ${FALKORDB_DATABASE:default_db}
+
+graphiti:
+  group_id: ${GRAPHITI_GROUP_ID:main}
+  user_id: ${USER_ID:mcp_user}

@@ -1,0 +1,34 @@
+# Rendered by Terraform (templatefile). Terraform interpolation is $${...}; Caddy
+# placeholders use {env.X} (single brace) and pass through untouched.
+{
+%{ if acme_email != "" ~}
+	email ${acme_email}
+%{ endif ~}
+}
+
+# One wildcard cert for *.mcp.nickawilliams.com via Route53 DNS-01 (keeps
+# individual service names out of Certificate Transparency logs). Per-service
+# routing is by host matcher; every service is bearer-gated before proxying.
+*.${mcp_domain} {
+	tls {
+		dns route53
+	}
+
+%{ for name, svc in services ~}
+	@${name} host ${svc.subdomain}.${mcp_domain}
+	handle @${name} {
+		@${name}-unauth not header Authorization "Bearer ${bearer_token}"
+		respond @${name}-unauth "Unauthorized" 401
+		# The MCP SDK's DNS-rebinding guard only accepts localhost, so present
+		# that upstream (site routing already matched on the real host above).
+		reverse_proxy ${svc.upstream} {
+			header_up Host localhost:8000
+		}
+	}
+%{ endfor ~}
+
+	# Unmatched subdomains: no OAuth metadata, just 404.
+	handle {
+		respond "Not Found" 404
+	}
+}
