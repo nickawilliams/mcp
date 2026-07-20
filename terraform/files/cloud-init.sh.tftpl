@@ -36,8 +36,11 @@ mount "$${APP_DIR}/data"
 mkdir -p "$${APP_DIR}/data/falkordb" "$${APP_DIR}/data/caddy" "$${APP_DIR}/data/caddy-config"
 
 # --- Config from SSM (String params) ----------------------------------------
+# --with-decryption: harmless for String params, required for the Caddyfile
+# (SecureString — it embeds the bearer token).
 for f in docker-compose.yml Caddyfile graphiti-config.yaml Dockerfile.caddy; do
-	aws ssm get-parameter --region "$${REGION}" --name "/$${PREFIX}/config/$${f}" \
+	aws ssm get-parameter --region "$${REGION}" --with-decryption \
+		--name "/$${PREFIX}/config/$${f}" \
 		--query Parameter.Value --output text >"$${APP_DIR}/$${f}"
 done
 
@@ -45,7 +48,7 @@ done
 umask 077
 : >"$${APP_DIR}/.env"
 for s in OPENAI_API_KEY MCP_BEARER_TOKEN FALKORDB_PASSWORD; do
-	val="$$(aws ssm get-parameter --region "$${REGION}" --with-decryption \
+	val="$(aws ssm get-parameter --region "$${REGION}" --with-decryption \
 		--name "/$${PREFIX}/secrets/$${s}" --query Parameter.Value --output text)"
 	echo "$${s}=$${val}" >>"$${APP_DIR}/.env"
 done

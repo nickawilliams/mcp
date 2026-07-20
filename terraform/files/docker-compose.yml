@@ -30,6 +30,7 @@ services:
         condition: service_healthy
     environment:
       - FALKORDB_URI=redis://falkordb:6379
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD}
       - FALKORDB_DATABASE=default_db
       - GRAPHITI_GROUP_ID=main
       - SEMAPHORE_LIMIT=10
@@ -49,6 +50,10 @@ services:
     image: falkordb/falkordb:latest
     restart: unless-stopped
     environment:
+      # REDIS_ARGS is what the image actually applies as server config; the
+      # bare FALKORDB_PASSWORD env is ignored for auth (observed 2026-07-19).
+      - REDIS_ARGS=--requirepass ${FALKORDB_PASSWORD}
+      - FALKORDB_PASSWORD=${FALKORDB_PASSWORD}
       - BROWSER=1
     volumes:
       - ./data/falkordb:/var/lib/falkordb/data
@@ -56,7 +61,7 @@ services:
       - "127.0.0.1:6379:6379" # debug via SSM tunnel only
       - "127.0.0.1:3000:3000" # FalkorDB browser UI, SSM tunnel only
     healthcheck:
-      test: ["CMD", "redis-cli", "-p", "6379", "ping"]
+      test: ["CMD-SHELL", "redis-cli -p 6379 -a \"$$FALKORDB_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5

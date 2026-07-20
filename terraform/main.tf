@@ -227,8 +227,9 @@ resource "aws_ssm_parameter" "config" {
     "Caddyfile"            = local.caddyfile
   }
 
+  # The rendered Caddyfile embeds the bearer token, so it rides encrypted.
   name  = "/${local.path_prefix}/config/${each.key}"
-  type  = "String"
+  type  = each.key == "Caddyfile" ? "SecureString" : "String"
   value = each.value
 }
 
