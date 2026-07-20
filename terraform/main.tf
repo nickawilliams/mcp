@@ -257,6 +257,13 @@ resource "aws_instance" "host" {
     http_put_response_hop_limit = 2
   }
 
+  # most_recent AMI data means a newer AL2023 release would otherwise
+  # force-replace the host on the next apply. Pin to the running AMI and
+  # recreate consciously (taint) when a refresh is wanted.
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   tags = {
     Name = "${local.name_prefix}-host"
   }
