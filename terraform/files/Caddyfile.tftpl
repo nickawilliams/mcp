@@ -19,6 +19,11 @@
 	handle @${name} {
 		@${name}-unauth not header Authorization "Bearer ${bearer_token}"
 		respond @${name}-unauth "Unauthorized" 401
+		# The bare hostname IS the endpoint: map / onto the upstream's MCP
+		# path, and collapse the trailing-slash variant that would otherwise
+		# 307-redirect (with an http:// Location) at the upstream.
+		rewrite / ${svc.path}
+		rewrite ${svc.path}/ ${svc.path}
 		# The MCP SDK's DNS-rebinding guard only accepts localhost, so present
 		# that upstream (site routing already matched on the real host above).
 		reverse_proxy ${svc.upstream} {

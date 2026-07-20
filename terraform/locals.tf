@@ -47,11 +47,14 @@ locals {
   mcp_domain  = "mcp.${var.domain_primary}"
 
   # The framework's generalization: +1 service = +1 entry. Each gets a DNS
-  # record, a bearer-gated Caddy vhost, and (its own) compose service.
+  # record, a bearer-gated Caddy vhost, and (its own) compose service. `path`
+  # is the upstream image's MCP endpoint; Caddy maps the bare hostname onto it
+  # so clients never need to know it.
   services = {
     graphiti = {
       subdomain = "graphiti"
       upstream  = "graphiti-mcp:8000"
+      path      = "/mcp"
     }
   }
 

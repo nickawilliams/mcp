@@ -10,7 +10,7 @@ output "host_eip" {
 
 output "service_urls" {
   description = "MCP endpoint URLs"
-  value       = { for k, v in local.services : k => "https://${v.subdomain}.${local.mcp_domain}/mcp" }
+  value       = { for k, v in local.services : k => "https://${v.subdomain}.${local.mcp_domain}/" }
 }
 
 output "mcp_bearer_token" {
