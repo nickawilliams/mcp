@@ -22,8 +22,11 @@ graphiti.mcp.nickawilliams.com --443--> Caddy (auto-TLS + bearer auth)
   ~1/3 the cost. TLS terminates on the box via Caddy + Let's Encrypt (a
   `*.mcp.nickawilliams.com` wildcard via Route53 DNS-01). No SSH; shell access
   is via SSM Session Manager (`make ssm`).
-- **Auth**: Caddy enforces a static bearer token; the graph DB and the MCP
-  server bind to localhost only, so the sole public surface is Caddy `:443`.
+- **Auth**: Caddy enforces a static bearer token **per service** (rotate one
+  with `terraform apply -replace='random_password.service_bearer["<name>"]'`
+  then `make deploy`; read tokens via
+  `terraform output -json service_bearer_tokens`). Backends bind to localhost
+  only, so the sole public surface is Caddy `:443`.
 
 ## This repo vs. the infrastructure core
 
@@ -36,11 +39,24 @@ The dependency arrow only points inward: `[ infrastructure/common ] <-- [ mcp ]`
 
 ## Layout
 
+The repo is partitioned by concern: `terraform/` is the shared platform (host,
+DNS, Caddy, delivery), `services/<name>/` is everything a single MCP service
+runs (its compose stack + config), `docs/<name>/` its documentation. The
+top level mirrors `/opt/mcp` on the host: `docker-compose.yml` and each
+`services/<name>/` land there at the same relative paths.
+
 ```
 mcp/
-├── terraform/   # all IaC (see below)
-├── Makefile     # ops wrapper (op run + terraform; ssm/logs/deploy)
-├── .env         # 1Password op:// refs, gitignored (see Credentials)
+├── docker-compose.yml    # platform compose: Caddy + include of each service
+├── services/
+│   └── graphiti/         # one directory per MCP service
+│       ├── compose.yml   #   its containers (included by the root compose)
+│       └── config.yaml   #   its config (any non-.md file here ships to host)
+├── docs/
+│   └── graphiti/         # per-service docs (client instruction block, etc.)
+├── terraform/            # platform IaC; <service>.tf for service-owned extras
+├── Makefile              # ops wrapper (op run + terraform; ssm/logs/deploy)
+├── .env                  # 1Password op:// refs, gitignored (see Credentials)
 └── README.md
 ```
 
@@ -61,12 +77,23 @@ gitignored.
 make init
 make fmt validate
 make plan
-make apply
+make apply    # create/update AWS resources + push rendered config to SSM
+make deploy   # host re-pulls config/secrets from SSM and reconciles compose
 ```
+
+`apply` updates the SSM parameters; the running host only picks them up on
+`deploy` (which runs `refresh.sh` on the box via SSM send-command — the same
+script cloud-init runs at first boot).
 
 ## Adding a service
 
-Add an entry to the `services` map in `terraform/locals.tf` (image, subdomain,
-container port, required secrets), add its secrets to `.env`, then
-`make plan && make apply`. It gets a DNS record, a Caddy vhost, and a
-compose service.
+1. Create `services/<name>/compose.yml` (its containers; relative paths are
+   from `/opt/mcp`, e.g. `./services/<name>/config.yaml`, `./data/<dir>`) and
+   add an `include` entry for it in the root `docker-compose.yml`.
+2. Add an entry to the `services` map in `terraform/locals.tf` (subdomain,
+   upstream, MCP path, data dirs). This alone yields the DNS record, the
+   bearer-gated Caddy vhost, its token, and file delivery to the host.
+3. If it needs service-specific resources (API keys, SSM secrets), give it a
+   `terraform/<name>.tf` — see `graphiti.tf` for the pattern. Secret basenames
+   must be unique across services (they share the host's `.env`).
+4. `make plan && make apply && make deploy`.

@@ -179,57 +179,43 @@ resource "aws_iam_instance_profile" "host" {
   role = aws_iam_role.host.name
 }
 
-# Secrets (SSM Parameter Store, SecureString)
+# Auth (per-service bearer tokens)
 # ==============================================================================
-# The bearer token and FalkorDB password are generated here; the OpenAI key is
-# op://-sourced via .env (TF_VAR). All land under /common/mcp/secrets/* and are
-# read by the host at boot (see IAM above). SecureString uses alias/aws/ssm.
+# Each service in the map gets its own bearer token, so one credential can be
+# rotated (`terraform apply -replace='random_password.service_bearer["x"]'`)
+# without breaking the others' clients. Tokens reach the host only inside the
+# rendered Caddyfile (SecureString); clients read them from terraform output.
+# Service-specific secrets (e.g. graphiti's OpenAI key) live in that
+# service's own .tf file under /common/mcp/secrets/*.
 
-resource "random_password" "bearer" {
+resource "random_password" "service_bearer" {
+  for_each = local.services
+
   length  = 48
   special = false
 }
 
-resource "random_password" "falkordb" {
-  length  = 32
-  special = false
-}
-
-resource "aws_ssm_parameter" "openai_api_key" {
-  name  = "/${local.path_prefix}/secrets/OPENAI_API_KEY"
-  type  = "SecureString"
-  value = openai_project_service_account.graphiti.api_key
-}
-
-resource "aws_ssm_parameter" "bearer_token" {
-  name  = "/${local.path_prefix}/secrets/MCP_BEARER_TOKEN"
-  type  = "SecureString"
-  value = random_password.bearer.result
-}
-
-resource "aws_ssm_parameter" "falkordb_password" {
-  name  = "/${local.path_prefix}/secrets/FALKORDB_PASSWORD"
-  type  = "SecureString"
-  value = random_password.falkordb.result
+# The shared-token era's token becomes graphiti's, so existing clients keep
+# working across the restructure.
+moved {
+  from = random_password.bearer
+  to   = random_password.service_bearer["graphiti"]
 }
 
 # Config delivery (SSM String params)
 # ==============================================================================
-# Non-secret rendered config, pulled by the host at boot and reloadable via
-# `make deploy` (ssm send-command) without replacing the instance. Static files
-# are read raw (their ${VAR} survive for runtime); the Caddyfile is rendered.
+# Rendered + static config, pulled by the host at boot and re-pulled via
+# `make deploy` (refresh.sh) without replacing the instance. The set is
+# data-driven: platform files here, plus everything under services/<name>/
+# (see locals.config_files). Static files are read raw (their ${VAR} survive
+# for compose runtime); Caddyfile and refresh.sh are rendered.
 
 resource "aws_ssm_parameter" "config" {
-  for_each = {
-    "docker-compose.yml"   = file("${path.module}/files/docker-compose.yml")
-    "graphiti-config.yaml" = file("${path.module}/files/graphiti-config.yaml")
-    "Dockerfile.caddy"     = file("${path.module}/files/Dockerfile.caddy")
-    "Caddyfile"            = local.caddyfile
-  }
+  for_each = local.config_files
 
-  # The rendered Caddyfile embeds the bearer token, so it rides encrypted.
+  # The rendered Caddyfile embeds the bearer tokens, so it rides encrypted.
   name  = "/${local.path_prefix}/config/${each.key}"
-  type  = each.key == "Caddyfile" ? "SecureString" : "String"
+  type  = each.key == "caddy/Caddyfile" ? "SecureString" : "String"
   value = each.value
 }
 

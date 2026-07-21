@@ -8,7 +8,8 @@
 
 # One wildcard cert for *.mcp.nickawilliams.com via Route53 DNS-01 (keeps
 # individual service names out of Certificate Transparency logs). Per-service
-# routing is by host matcher; every service is bearer-gated before proxying.
+# routing is by host matcher; every service is gated by its own bearer token
+# before proxying, so one credential can be rotated without touching the rest.
 *.${mcp_domain} {
 	tls {
 		dns route53
@@ -17,7 +18,7 @@
 %{ for name, svc in services ~}
 	@${name} host ${svc.subdomain}.${mcp_domain}
 	handle @${name} {
-		@${name}-unauth not header Authorization "Bearer ${bearer_token}"
+		@${name}-unauth not header Authorization "Bearer ${tokens[name]}"
 		respond @${name}-unauth "Unauthorized" 401
 		# The bare hostname IS the endpoint: map / onto the upstream's MCP
 		# path, and collapse the trailing-slash variant that would otherwise

@@ -33,27 +33,11 @@ grep -q "$${APP_DIR}/data" /etc/fstab ||
 	echo "LABEL=mcp-data $${APP_DIR}/data ext4 defaults,nofail 0 2" >>/etc/fstab
 mkdir -p "$${APP_DIR}/data"
 mount "$${APP_DIR}/data"
-mkdir -p "$${APP_DIR}/data/falkordb" "$${APP_DIR}/data/caddy" "$${APP_DIR}/data/caddy-config"
 
-# --- Config from SSM (String params) ----------------------------------------
-# --with-decryption: harmless for String params, required for the Caddyfile
-# (SecureString — it embeds the bearer token).
-for f in docker-compose.yml Caddyfile graphiti-config.yaml Dockerfile.caddy; do
-	aws ssm get-parameter --region "$${REGION}" --with-decryption \
-		--name "/$${PREFIX}/config/$${f}" \
-		--query Parameter.Value --output text >"$${APP_DIR}/$${f}"
-done
-
-# --- Secrets from SSM (SecureString) -> .env (root-only) --------------------
-umask 077
-: >"$${APP_DIR}/.env"
-for s in OPENAI_API_KEY MCP_BEARER_TOKEN FALKORDB_PASSWORD; do
-	val="$(aws ssm get-parameter --region "$${REGION}" --with-decryption \
-		--name "/$${PREFIX}/secrets/$${s}" --query Parameter.Value --output text)"
-	echo "$${s}=$${val}" >>"$${APP_DIR}/.env"
-done
-umask 022
-
-# --- Launch -----------------------------------------------------------------
-cd "$${APP_DIR}"
-docker compose up -d --build
+# --- Sync config/secrets + launch -------------------------------------------
+# Delegated to refresh.sh (itself a config param) — the same path `make
+# deploy` uses, so first boot and every later config push are one mechanism.
+aws ssm get-parameter --region "$${REGION}" \
+	--name "/$${PREFIX}/config/refresh.sh" \
+	--query Parameter.Value --output text >"$${APP_DIR}/refresh.sh"
+bash "$${APP_DIR}/refresh.sh"

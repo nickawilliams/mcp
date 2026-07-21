@@ -13,9 +13,9 @@ output "service_urls" {
   value       = { for k, v in local.services : k => "https://${v.subdomain}.${local.mcp_domain}/" }
 }
 
-output "mcp_bearer_token" {
-  description = "Bearer token for MCP clients (Authorization: Bearer <token>)"
-  value       = random_password.bearer.result
+output "service_bearer_tokens" {
+  description = "Per-service bearer tokens (Authorization: Bearer <token>)"
+  value       = local.service_tokens
   sensitive   = true
 }
 

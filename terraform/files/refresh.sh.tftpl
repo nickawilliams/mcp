@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Rendered by Terraform and delivered as an SSM param (config/refresh.sh).
+# Synchronizes the host with the stack's rendered state: pulls every config
+# param and secret from SSM, ensures data dirs, and reconciles compose.
+# Idempotent — run by cloud-init at first boot and by `make deploy` after.
+# Shell expansion is escaped ($$) so it survives templating.
+set -euo pipefail
+
+REGION="${region}"
+PREFIX="${path_prefix}"
+APP_DIR="/opt/mcp"
+
+cd "$${APP_DIR}"
+
+# --- Data directories (bind-mount targets on the EBS data volume) ------------
+mkdir -p%{ for d in data_dirs } "$${APP_DIR}/data/${d}"%{ endfor }
+
+# --- Config from SSM ---------------------------------------------------------
+# Every param under config/ lands at its relative path (slashes in the param
+# name become directories). Written via tmp + mv so a running refresh.sh can
+# replace itself safely.
+for name in $(aws ssm get-parameters-by-path --region "$${REGION}" \
+	--path "/$${PREFIX}/config/" --recursive \
+	--query "Parameters[].Name" --output text); do
+	rel="$${name#/"$${PREFIX}"/config/}"
+	mkdir -p "$${APP_DIR}/$(dirname "$${rel}")"
+	aws ssm get-parameter --region "$${REGION}" --with-decryption \
+		--name "$${name}" --query Parameter.Value --output text \
+		>"$${APP_DIR}/$${rel}.tmp"
+	mv "$${APP_DIR}/$${rel}.tmp" "$${APP_DIR}/$${rel}"
+done
+
+# --- Secrets from SSM (SecureString) -> .env (root-only) ---------------------
+# Env var name = last path segment, so every secret needs a unique basename.
+umask 077
+: >"$${APP_DIR}/.env.tmp"
+for name in $(aws ssm get-parameters-by-path --region "$${REGION}" \
+	--path "/$${PREFIX}/secrets/" --recursive \
+	--query "Parameters[].Name" --output text); do
+	val="$(aws ssm get-parameter --region "$${REGION}" --with-decryption \
+		--name "$${name}" --query Parameter.Value --output text)"
+	echo "$${name##*/}=$${val}" >>"$${APP_DIR}/.env.tmp"
+done
+mv "$${APP_DIR}/.env.tmp" "$${APP_DIR}/.env"
+umask 022
+
+# --- Reconcile ---------------------------------------------------------------
+# --remove-orphans retires containers whose service was removed from the map.
+# Compose recreates containers whose compose config (incl. interpolated .env
+# values) changed; bind-mounted file contents are invisible to it, so Caddy is
+# reloaded explicitly (zero-downtime vhost/token pushes). Backends that read
+# config at startup need a `docker compose restart <svc>` after a config push.
+docker compose up -d --build --remove-orphans
+docker compose exec -T caddy caddy reload --config /etc/caddy/Caddyfile

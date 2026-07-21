@@ -189,11 +189,15 @@ one advisory want) it would be a cannon for a fly.
 
 Small operational gaps to close within v1, independent of the v2 vision:
 
-- **Implement `make deploy`** — currently a TODO; config reloads are done by hand
-  via `aws ssm send-command`. Wire the SSM-send-command reload so a config change is
-  a one-liner.
-- **Token-rotation runbook** — `terraform apply -replace=random_password.bearer`
-  → reload Caddy → update clients. Document (and fold into `make deploy`).
+- ~~**Implement `make deploy`**~~ — done 2026-07-21: `refresh.sh` (rendered,
+  SSM-delivered) pulls all config/secrets by path and reconciles compose; both
+  cloud-init and `make deploy` run it, so first boot and config pushes are one
+  mechanism.
+- ~~**Token-rotation runbook**~~ — done 2026-07-21 (per-service tokens landed
+  with the services/ restructure):
+  `terraform apply -replace='random_password.service_bearer["<name>"]'` →
+  `make deploy` → update that service's clients
+  (`terraform output -json service_bearer_tokens`). Other services unaffected.
 - **Pin the graphiti image to a digest** — currently rides mutable
   `zepai/knowledge-graph-mcp:standalone`. The silent-drift risk is real: upstream has
   reworded the instructions constant and uses nested env binding

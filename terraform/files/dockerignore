@@ -1,0 +1,6 @@
+# Delivered to the host as /opt/mcp/.dockerignore. The Caddy image build uses
+# /opt/mcp as its context; keep the graph data (grows unbounded) and secrets
+# out of what gets sent to the docker daemon.
+data/
+.env
+services/

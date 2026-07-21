@@ -1,0 +1,29 @@
+# Platform compose: Caddy (public TLS + bearer auth) is the only service
+# defined here and the only one that publishes to the world (80/443). Each MCP
+# service contributes its own stack via include (services/<name>/compose.yml);
+# +1 service = +1 include line. `project_directory: .` pins every relative
+# path in the included files (volumes, .env) to this file's directory, which
+# is /opt/mcp on the host. Interpolation here is docker-compose's
+# ${VAR:-default}; values come from ./.env (secrets from SSM).
+include:
+  - path: services/graphiti/compose.yml
+    project_directory: .
+
+services:
+  caddy:
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - AWS_REGION=us-west-1
+    volumes:
+      # Directory (not file) mount: refresh.sh replaces files via mv, and a
+      # single-file bind mount would pin the old inode forever. refresh.sh
+      # reloads Caddy after each sync, so Caddyfile pushes are zero-downtime.
+      - ./caddy:/etc/caddy:ro
+      - ./data/caddy:/data
+      - ./data/caddy-config:/config

@@ -36,8 +36,21 @@ logs:
 		--document-name AWS-StartInteractiveCommand \
 		--parameters 'command=["cd /opt/mcp && docker compose logs -f --tail=200"]'
 
-# deploy: re-push rendered config to the host and reload (see task 4 —
-# config delivery via SSM/S3 + `aws ssm send-command`). TODO: implement once
-# the config-delivery mechanism lands.
+# deploy: tell the host to re-pull rendered config/secrets from SSM and
+# reconcile compose (services restart only if their config changed). Run after
+# `make apply` whenever config changed. Fetches refresh.sh fresh first, so the
+# sync logic itself is deployable through the same path.
+SSM_CONFIG = /common/mcp/config
+
 deploy:
-	@echo "TODO: push rendered compose/Caddyfile + reload via ssm send-command"
+	@cmd_id=$$(aws ssm send-command \
+		--targets "Key=InstanceIds,Values=$(INSTANCE)" \
+		--document-name "AWS-RunShellScript" \
+		--comment "mcp deploy: refresh config from SSM" \
+		--parameters 'commands=["aws ssm get-parameter --region us-west-1 --name $(SSM_CONFIG)/refresh.sh --query Parameter.Value --output text > /opt/mcp/refresh.sh","bash /opt/mcp/refresh.sh"]' \
+		--query Command.CommandId --output text); \
+	echo "deploy: $$cmd_id (waiting...)"; \
+	aws ssm wait command-executed --command-id "$$cmd_id" --instance-id "$(INSTANCE)" || true; \
+	aws ssm get-command-invocation --command-id "$$cmd_id" --instance-id "$(INSTANCE)" \
+		--query "{Status:Status,Stdout:StandardOutputContent,Stderr:StandardErrorContent}" \
+		--output json

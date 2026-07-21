@@ -1,27 +1,10 @@
-# MCP host stack: Caddy (public TLS + bearer auth) -> graphiti-mcp -> FalkorDB.
-# Only Caddy publishes to the world (80/443). graphiti and FalkorDB expose their
-# ports on the compose network for Caddy, and bind to 127.0.0.1 for SSM-tunnel
-# debugging only — never to the public interface. Interpolation here is
-# docker-compose's ${VAR:-default}; values come from ./.env (secrets from SSM).
+# graphiti: knowledge-graph long-term-memory MCP server + its FalkorDB store.
+# Included by the root docker-compose.yml with project_directory rooted at the
+# app dir (/opt/mcp on the host), so relative paths here are from that root,
+# NOT from this file's directory. Both services expose their ports on the
+# compose network for Caddy and bind to 127.0.0.1 for SSM-tunnel debugging
+# only — never to the public interface.
 services:
-  caddy:
-    build:
-      context: .
-      dockerfile: Dockerfile.caddy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    environment:
-      - AWS_REGION=us-west-1
-      - MCP_BEARER_TOKEN=${MCP_BEARER_TOKEN}
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - ./data/caddy:/data
-      - ./data/caddy-config:/config
-    depends_on:
-      - graphiti-mcp
-
   graphiti-mcp:
     image: zepai/knowledge-graph-mcp:standalone
     restart: unless-stopped
@@ -35,13 +18,18 @@ services:
       - GRAPHITI_GROUP_ID=main
       - SEMAPHORE_LIMIT=10
       - GRAPHITI_TELEMETRY_ENABLED=false
-      - CONFIG_PATH=/app/mcp/config/config.yaml
+      - CONFIG_PATH=/config/config.yaml
       - MODEL_NAME=gpt-4.1-mini
       - EMBEDDER_MODEL=text-embedding-3-small
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - PATH=/root/.local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
     volumes:
-      - ./graphiti-config.yaml:/app/mcp/config/config.yaml:ro
+      # Directory (not file) mount — see the caddy service's volume note.
+      # Mounted at a clean path (CONFIG_PATH points into it) rather than over
+      # the image's own config dir, so no image files get hidden. graphiti
+      # reads config at startup only: after a config.yaml push,
+      # `docker compose restart graphiti-mcp` picks it up.
+      - ./services/graphiti:/config:ro
     ports:
       - "127.0.0.1:8000:8000" # debug via SSM tunnel only
     command: ["uv", "run", "main.py"]
