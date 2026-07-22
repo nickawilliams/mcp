@@ -60,6 +60,10 @@ for **enforced** namespace isolation, tool **aggregation**, or centralized MCP
 policy. Any one of those makes the gateway earn its complexity; today (one service,
 one advisory want) it would be a cannon for a fly.
 
+**Repo decision (2026-07-21)**: whichever way build-vs-buy goes, the gateway
+does **not** live in this repo — it arrives as an external image dependency
+(see C6). This repo stays pure composition: images, config, IaC.
+
 ---
 
 ## Candidate capabilities
@@ -168,6 +172,31 @@ one advisory want) it would be a cannon for a fly.
 - **Interim (v1) mitigation**: one canonical rules snippet, fanned out via dotfiles
   symlink or McpOne-if-it-grows-that-feature; stable text, so low churn.
 - *Logged: 2026-07-20*
+
+### C6 — Gateway as an external image dependency (own repo)
+- **Need**: a home for the (possibly custom, Go) gateway codebase and a
+  delivery path for its artifact, without reshaping this repo.
+- **v1 limitation**: this repo builds no software — delivery is small text
+  files via SSM params (4–8 KB caps); it cannot carry a codebase, and on-host
+  source builds are undesirable (2026-07-21).
+- **Candidate v2 mechanism**: the gateway lives in its own repo with its own
+  CI/releases, publishing a container image; this repo consumes it as a
+  pinned image reference (digest/version tag, never `:latest` — see the
+  graphiti pin item below) plus a terraform-rendered config template. Same
+  contract as Caddy today: **the image is theirs, the config instance is
+  ours** (tokens, group maps, backend routes are platform data). Symmetric
+  with build-vs-buy — an off-the-shelf gateway product slots in identically,
+  and the choice can change later without restructuring this repo.
+- **Trigger to build**: the decision to run a gateway at all (the overall v2
+  trigger above).
+- **Caveats**: cross-repo friction while the gateway's config schema churns
+  against the platform (coupled changes = two PRs + a version bump; mitigate
+  with a local compose override pointing at a locally built image). A
+  **private** image adds a platform prerequisite: registry pull auth on the
+  host (ECR role grant or GHCR token); a public image needs nothing.
+- **Interim (v1) mitigation**: none needed — nothing in this repo changes
+  until a gateway exists.
+- *Logged: 2026-07-21*
 
 ---
 
