@@ -80,6 +80,12 @@ deploy:
 # image of the pinned upstream tag. Registry auth is ambient (docker login
 # locally; docker/login-action in CI).
 
+# The sed works around an upstream Dockerfile bug: the crate was renamed
+# mail-imap-mcp-rs -> mail-mcp but the COPY source path wasn't updated (the
+# upstream Docker workflow has never run, so it goes unnoticed). Only the
+# source path is patched — the /mail-imap-mcp-rs destination (and
+# ENTRYPOINT) stay as-is. No-ops once fixed upstream.
+
 ## Build + push the mail-mcp linux/arm64 image from the pinned upstream tag
 publish/mail-mcp:
 	@set -euo pipefail; \
@@ -88,6 +94,9 @@ publish/mail-mcp:
 	echo "Cloning $(MAIL_MCP_REPO) @ $(MAIL_MCP_VERSION)..."; \
 	git clone --quiet --depth 1 --branch "$(MAIL_MCP_VERSION)" \
 		"$(MAIL_MCP_REPO)" "$$tmp"; \
+	sed -i.bak \
+		's|/app/target/release/mail-imap-mcp-rs |/app/target/release/mail-mcp |' \
+		"$$tmp/Dockerfile" && rm -f "$$tmp/Dockerfile.bak"; \
 	docker buildx build --platform linux/arm64 \
 		--tag "$(MAIL_MCP_IMAGE):$(MAIL_MCP_VERSION)" --push "$$tmp"; \
 	echo ""; \
