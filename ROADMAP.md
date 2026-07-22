@@ -59,6 +59,8 @@ Gateway, FastMCP proxy mode.
 for **enforced** namespace isolation, tool **aggregation**, or centralized MCP
 policy. Any one of those makes the gateway earn its complexity; today (one service,
 one advisory want) it would be a cannon for a fly.
+*Update 2026-07-22: service #2 (mail) landed — the trigger is partially met.
+One more service, or any enforcement need, tips it.*
 
 **Repo decision (2026-07-21)**: whichever way build-vs-buy goes, the gateway
 does **not** live in this repo — it arrives as an external image dependency
@@ -150,11 +152,19 @@ does **not** live in this repo — it arrives as an external image dependency
   from poisoning the bearer host. End-state — a **single universal endpoint** that
   offers bearer *and* OAuth once the client header-override bug is fixed.
 - **Trigger to build**: wanting graphiti as a claude.ai-web or ChatGPT connector.
+  **Escalated 2026-07-22**: the mail service (full read/write/send access to all
+  mail accounts) now sits behind a static bearer token — C4 (or a Tailscale-only
+  binding, which is a tenth of the effort but forecloses web connectors) is the
+  **designated next major platform addition**. Interacts with C2/the gateway:
+  a real identity layer is what token→group/tool enforcement wants to bind to.
 - **Caveats**: OAuth is hostile to headless/automation contexts (needs a browser);
   the bearer path must stay for scripts/CI. This is largely independent of the MCP
   gateway (it's a Caddy + IdP concern), so it can land on its own timeline.
 - **Interim (v1) mitigation**: bearer covers 100% of clients actually run on your
-  own machines; the two web connectors simply aren't wired up.
+  own machines; the two web connectors simply aren't wired up. Hardening landed
+  with the mail service (2026-07-22): per-service tokens (already), per-service
+  compose networks (no lateral container access to unauthenticated backends),
+  Caddy structured access logs (audit trail).
 - *Logged: 2026-07-20*
 
 ### C5 — Cross-client behavior management

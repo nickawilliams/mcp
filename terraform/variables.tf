@@ -33,3 +33,30 @@ variable "acme_email" {
   type        = string
   default     = ""
 }
+
+# Mail account passwords (op://-sourced via .env as TF_VAR_*). Scalars, not a
+# map: `op run` only resolves values that are exactly an op:// reference.
+
+variable "mail_password_default" {
+  description = "Password for the 'default' mail account (Migadu nick@)"
+  type        = string
+  sensitive   = true
+}
+
+variable "mail_password_accounts" {
+  description = "Password for the 'accounts' mail account (Migadu accounts@)"
+  type        = string
+  sensitive   = true
+}
+
+variable "mail_password_gmail" {
+  description = "App password for the 'gmail' mail account (personal Gmail)"
+  type        = string
+  sensitive   = true
+}
+
+variable "mail_password_work" {
+  description = "App password for the 'work' mail account (Clearstory Gmail)"
+  type        = string
+  sensitive   = true
+}

@@ -1,0 +1,82 @@
+# mail: multi-account IMAP/SMTP MCP server (tecnologicachile/mail-mcp). The
+# upstream binary is stdio-only; supergateway wraps it in-container and
+# serves streamable HTTP on :8080 (stateful: one stdio child per MCP
+# session, reaped after 10 min idle; the child inherits this environment).
+# Included by the root docker-compose.yaml with project_directory rooted at
+# the app dir (/opt/mcp on the host), so relative paths here are from that
+# root, NOT from this file's directory. Only Caddy shares the `mail`
+# network — other services cannot reach the unauthenticated bridge.
+#
+# Plain account config lives here; passwords interpolate from the host .env
+# (SSM SecureStrings, one per account, fanned out to IMAP+SMTP pairs).
+# SMTP Sent-folder saving relies on the provider-aware defaults (v0.4.8+):
+# Migadu (generic SMTP) auto-appends, Gmail is saved server-side.
+services:
+  mail-mcp:
+    build:
+      context: ./services/mail
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - mail
+    command:
+      [
+        "--stdio", "/usr/local/bin/mail-imap-mcp-rs",
+        "--outputTransport", "streamableHttp",
+        "--stateful",
+        "--port", "8080",
+        "--streamableHttpPath", "/mcp",
+        "--healthEndpoint", "/healthz",
+        "--sessionTimeout", "600000",
+        "--logLevel", "info",
+      ]
+    environment:
+      # Global write gates
+      - MAIL_IMAP_WRITE_ENABLED=true
+      - MAIL_SMTP_WRITE_ENABLED=true
+      # default — Migadu personal
+      - MAIL_IMAP_DEFAULT_HOST=imap.migadu.com
+      - MAIL_IMAP_DEFAULT_USER=nick@nickawilliams.com
+      - MAIL_IMAP_DEFAULT_PASS=${MAIL_DEFAULT_PASSWORD}
+      - MAIL_SMTP_DEFAULT_HOST=smtp.migadu.com
+      - MAIL_SMTP_DEFAULT_PORT=465
+      - MAIL_SMTP_DEFAULT_SECURE=tls
+      - MAIL_SMTP_DEFAULT_USER=nick@nickawilliams.com
+      - MAIL_SMTP_DEFAULT_PASS=${MAIL_DEFAULT_PASSWORD}
+      # accounts — Migadu accounts@
+      - MAIL_IMAP_ACCOUNTS_HOST=imap.migadu.com
+      - MAIL_IMAP_ACCOUNTS_USER=accounts@nickawilliams.com
+      - MAIL_IMAP_ACCOUNTS_PASS=${MAIL_ACCOUNTS_PASSWORD}
+      - MAIL_SMTP_ACCOUNTS_HOST=smtp.migadu.com
+      - MAIL_SMTP_ACCOUNTS_PORT=465
+      - MAIL_SMTP_ACCOUNTS_SECURE=tls
+      - MAIL_SMTP_ACCOUNTS_USER=accounts@nickawilliams.com
+      - MAIL_SMTP_ACCOUNTS_PASS=${MAIL_ACCOUNTS_PASSWORD}
+      # gmail — personal (app password)
+      - MAIL_IMAP_GMAIL_HOST=imap.gmail.com
+      - MAIL_IMAP_GMAIL_USER=rogwilco@gmail.com
+      - MAIL_IMAP_GMAIL_PASS=${MAIL_GMAIL_PASSWORD}
+      - MAIL_SMTP_GMAIL_HOST=smtp.gmail.com
+      - MAIL_SMTP_GMAIL_SECURE=starttls
+      - MAIL_SMTP_GMAIL_USER=rogwilco@gmail.com
+      - MAIL_SMTP_GMAIL_PASS=${MAIL_GMAIL_PASSWORD}
+      # work — Clearstory Gmail (NOTE: ~/.profile-mail-mcp wrongly points
+      # SMTP at imap.gmail.com; corrected here)
+      - MAIL_IMAP_WORK_HOST=imap.gmail.com
+      - MAIL_IMAP_WORK_USER=nwilliams@clearstory.build
+      - MAIL_IMAP_WORK_PASS=${MAIL_WORK_PASSWORD}
+      - MAIL_SMTP_WORK_HOST=smtp.gmail.com
+      - MAIL_SMTP_WORK_SECURE=starttls
+      - MAIL_SMTP_WORK_USER=nwilliams@clearstory.build
+      - MAIL_SMTP_WORK_PASS=${MAIL_WORK_PASSWORD}
+    ports:
+      - "127.0.0.1:8080:8080" # debug via SSM tunnel only (8000 is graphiti's)
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  mail: {}

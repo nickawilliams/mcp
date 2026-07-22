@@ -8,6 +8,8 @@ services:
   graphiti-mcp:
     image: zepai/knowledge-graph-mcp:standalone
     restart: unless-stopped
+    networks:
+      - graphiti
     depends_on:
       falkordb:
         condition: service_healthy
@@ -37,6 +39,8 @@ services:
   falkordb:
     image: falkordb/falkordb:latest
     restart: unless-stopped
+    networks:
+      - graphiti
     environment:
       # REDIS_ARGS is what the image actually applies as server config; the
       # bare FALKORDB_PASSWORD env is ignored for auth (observed 2026-07-19).
@@ -54,3 +58,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+# This service's isolated network; Caddy joins it from the root compose.
+networks:
+  graphiti: {}

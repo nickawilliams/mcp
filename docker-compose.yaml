@@ -8,6 +8,8 @@
 include:
   - path: services/graphiti/compose.yaml
     project_directory: .
+  - path: services/mail/compose.yaml
+    project_directory: .
 
 services:
   caddy:
@@ -18,6 +20,12 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # Caddy joins every service network (one per service — +1 line per
+    # service); services join only their own, so a compromised container
+    # cannot reach another service's (possibly unauthenticated) backend.
+    networks:
+      - graphiti
+      - mail
     environment:
       - AWS_REGION=us-west-1
     volumes:
@@ -27,3 +35,7 @@ services:
       - ./caddy:/etc/caddy:ro
       - ./data/caddy:/data
       - ./data/caddy-config:/config
+
+networks:
+  graphiti: {}
+  mail: {}

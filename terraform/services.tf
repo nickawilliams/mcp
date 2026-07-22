@@ -16,6 +16,22 @@ module "graphiti" {
   openai_project_id = openai_project.mcp.id
 }
 
+module "mail" {
+  source = "./modules/mail"
+
+  path_prefix = local.path_prefix
+  mcp_domain  = local.mcp_domain
+  zone_id     = aws_route53_zone.mcp.zone_id
+  host_ip     = aws_eip.host.public_ip
+
+  account_passwords = {
+    default  = var.mail_password_default
+    accounts = var.mail_password_accounts
+    gmail    = var.mail_password_gmail
+    work     = var.mail_password_work
+  }
+}
+
 # --- State moves from the pre-module layout (2026-07-21) ----------------------
 
 moved {

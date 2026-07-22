@@ -2,8 +2,9 @@
 
 Self-hosted MCP (Model Context Protocol) services, reachable at
 `<service>.mcp.nickawilliams.com`. This repo owns the shared host and every
-service that runs on it. The first service is **graphiti** (a long-term-memory
-knowledge-graph MCP server).
+service that runs on it. Current services: **graphiti** (long-term-memory
+knowledge graph) and **mail** (multi-account IMAP/SMTP email, the stdio
+upstream wrapped by a supergateway streamable-HTTP bridge).
 
 ## Architecture
 
@@ -14,9 +15,14 @@ entry in the `services` map.
 
 ```
 graphiti.mcp.nickawilliams.com --443--> Caddy (auto-TLS + bearer auth)
-                                          -> graphiti-mcp  (:8000 /mcp/)
+mail.mcp.nickawilliams.com     --443-/    -> graphiti-mcp  (:8000 /mcp)
                                           -> falkordb      (graph DB)
+                                          -> mail-mcp      (:8080 /mcp)
 ```
+
+Each service lives on its own compose network with only Caddy attached to
+all of them, so containers cannot reach another service's backend directly.
+Caddy writes a structured access log (audit trail) to docker logs.
 
 - **Compute**: one EC2 host (not ECS/ALB) — single-user, stateful graph DB,
   ~1/3 the cost. TLS terminates on the box via Caddy + Let's Encrypt (a
@@ -91,11 +97,18 @@ make deploy   # host re-pulls config/secrets from SSM and reconciles compose
 `deploy` (which runs `refresh.sh` on the box via SSM send-command — the same
 script cloud-init runs at first boot).
 
+`make` is also the CI control plane: GitHub Actions workflows under
+`.github/workflows/` are thin wrappers over make targets (e.g.
+`make publish/mail-mcp` builds and pushes the mail-mcp arm64 image that
+upstream doesn't publish). Logic lives in the Makefile; workflows only do
+provider plumbing (checkout, registry login, runners). See `AGENTS.md`.
+
 ## Adding a service
 
 1. Create `services/<name>/compose.yaml` (its containers; relative paths are
-   from `/opt/mcp`, e.g. `./services/<name>/config.yaml`, `./data/<dir>`) and
-   add an `include` entry for it in the root `docker-compose.yaml`.
+   from `/opt/mcp`, e.g. `./services/<name>/config.yaml`, `./data/<dir>`),
+   declaring and joining its own network. In the root `docker-compose.yaml`,
+   add an `include` entry, declare the network, and attach caddy to it.
 2. Create `terraform/modules/<name>/` — copy `modules/graphiti/` as the
    scaffold and adjust: the registry identity (subdomain, upstream, MCP path,
    data dirs), the payload dir, and any service-specific extras (API keys,

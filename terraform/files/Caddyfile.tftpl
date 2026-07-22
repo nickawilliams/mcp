@@ -15,6 +15,13 @@
 		dns route53
 	}
 
+	# Structured access log to stdout (docker logs): a timestamped audit
+	# trail of every request and 401 across all vhosts.
+	log {
+		output stdout
+		format json
+	}
+
 %{ for name, svc in services ~}
 	@${name} host ${svc.subdomain}.${mcp_domain}
 	handle @${name} {
@@ -25,10 +32,12 @@
 		# 307-redirect (with an http:// Location) at the upstream.
 		rewrite / ${svc.path}
 		rewrite ${svc.path}/ ${svc.path}
-		# The MCP SDK's DNS-rebinding guard only accepts localhost, so present
-		# that upstream (site routing already matched on the real host above).
+		# Some upstreams (the MCP SDK's DNS-rebinding guard) only accept a
+		# localhost Host, so present one matching the upstream's port (site
+		# routing already matched on the real host above; harmless where the
+		# upstream doesn't validate Host).
 		reverse_proxy ${svc.upstream} {
-			header_up Host localhost:8000
+			header_up Host localhost:${element(split(":", svc.upstream), 1)}
 		}
 	}
 %{ endfor ~}

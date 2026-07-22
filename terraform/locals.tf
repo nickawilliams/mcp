@@ -54,10 +54,12 @@ locals {
   # targets created under /opt/mcp/data (the persistent EBS volume).
   services = {
     graphiti = module.graphiti.service
+    mail     = module.mail.service
   }
 
   service_tokens = {
     graphiti = module.graphiti.token
+    mail     = module.mail.token
   }
 
   # Platform dirs (caddy) + every service's declared data dirs.
