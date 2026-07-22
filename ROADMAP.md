@@ -195,7 +195,7 @@ Small operational gaps to close within v1, independent of the v2 vision:
   mechanism.
 - ~~**Token-rotation runbook**~~ — done 2026-07-21 (per-service tokens landed
   with the services/ restructure):
-  `terraform apply -replace='random_password.service_bearer["<name>"]'` →
+  `terraform apply -replace='module.<name>.random_password.bearer'` →
   `make deploy` → update that service's clients
   (`terraform output -json service_bearer_tokens`). Other services unaffected.
 - **Pin the graphiti image to a digest** — currently rides mutable

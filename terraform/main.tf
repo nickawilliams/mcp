@@ -179,41 +179,17 @@ resource "aws_iam_instance_profile" "host" {
   role = aws_iam_role.host.name
 }
 
-# Auth (per-service bearer tokens)
-# ==============================================================================
-# Each service in the map gets its own bearer token, so one credential can be
-# rotated (`terraform apply -replace='random_password.service_bearer["x"]'`)
-# without breaking the others' clients. Tokens reach the host only inside the
-# rendered Caddyfile (SecureString); clients read them from terraform output.
-# Service-specific secrets (e.g. graphiti's OpenAI key) live in that
-# service's own .tf file under /common/mcp/secrets/*.
-
-resource "random_password" "service_bearer" {
-  for_each = local.services
-
-  length  = 48
-  special = false
-}
-
-# The shared-token era's token becomes graphiti's, so existing clients keep
-# working across the restructure.
-moved {
-  from = random_password.bearer
-  to   = random_password.service_bearer["graphiti"]
-}
-
 # Config delivery (SSM String params)
 # ==============================================================================
-# Rendered + static config, pulled by the host at boot and re-pulled via
-# `make deploy` (refresh.sh) without replacing the instance. The set is
-# data-driven: platform files here, plus everything under services/<name>/
-# (see locals.config_files). Static files are read raw (their ${VAR} survive
-# for compose runtime); Caddyfile and refresh.sh are rendered.
+# Platform config, pulled by the host at boot and re-pulled via `make deploy`
+# (refresh.sh) without replacing the instance. Service payloads are delivered
+# the same way by each service's module. Static files are read raw (their
+# ${VAR} survive for compose runtime); Caddyfile and refresh.sh are rendered,
+# and the Caddyfile rides encrypted (it embeds the bearer tokens).
 
 resource "aws_ssm_parameter" "config" {
   for_each = local.config_files
 
-  # The rendered Caddyfile embeds the bearer tokens, so it rides encrypted.
   name  = "/${local.path_prefix}/config/${each.key}"
   type  = each.key == "caddy/Caddyfile" ? "SecureString" : "String"
   value = each.value
@@ -282,15 +258,3 @@ resource "aws_eip" "host" {
   }
 }
 
-# Service DNS (A records into the mcp zone -> host EIP)
-# ==============================================================================
-
-resource "aws_route53_record" "service" {
-  for_each = local.services
-
-  zone_id = aws_route53_zone.mcp.zone_id
-  name    = "${each.value.subdomain}.${local.mcp_domain}"
-  type    = "A"
-  ttl     = 300
-  records = [aws_eip.host.public_ip]
-}

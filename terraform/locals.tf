@@ -46,24 +46,18 @@ locals {
   path_prefix = replace(local.name_prefix, "-", "/")         # common/mcp (SSM paths)
   mcp_domain  = "mcp.${var.domain_primary}"
 
-  # The framework's generalization: +1 service = +1 entry here, +1 directory
-  # under services/<name>/ (compose.yml + any config), +1 include line in the
-  # root docker-compose.yml. Each entry gets a DNS record, a Caddy vhost gated
-  # by its own bearer token, and its files pushed to SSM. `path` is the
-  # upstream image's MCP endpoint; Caddy maps the bare hostname onto it so
-  # clients never need to know it. `data_dirs` are bind-mount targets created
-  # under /opt/mcp/data (the persistent EBS volume).
+  # Aggregated service registry. Each service module (see services.tf) owns
+  # its identity and exports it here; everything platform-shared — the Caddy
+  # vhosts, refresh.sh data dirs, service URLs — derives from these maps.
+  # `path` is the upstream image's MCP endpoint; Caddy maps the bare hostname
+  # onto it so clients never need to know it. `data_dirs` are bind-mount
+  # targets created under /opt/mcp/data (the persistent EBS volume).
   services = {
-    graphiti = {
-      subdomain = "graphiti"
-      upstream  = "graphiti-mcp:8000"
-      path      = "/mcp"
-      data_dirs = ["falkordb"]
-    }
+    graphiti = module.graphiti.service
   }
 
   service_tokens = {
-    for name, _ in local.services : name => random_password.service_bearer[name].result
+    graphiti = module.graphiti.token
   }
 
   # Platform dirs (caddy) + every service's declared data dirs.
@@ -85,26 +79,16 @@ locals {
     data_dirs   = local.data_dirs
   })
 
-  # Everything under services/<name>/ ships to the host at the same relative
-  # path (docs stay local: *.md is excluded).
-  service_files = merge([
-    for name, _ in local.services : {
-      for f in fileset("${path.module}/../services/${name}", "**") :
-      "services/${name}/${f}" => file("${path.module}/../services/${name}/${f}")
-      if !endswith(f, ".md")
-    }
-  ]...)
-
-  config_files = merge(
-    {
-      "docker-compose.yml" = file("${path.module}/../docker-compose.yml")
-      "Dockerfile.caddy"   = file("${path.module}/files/Dockerfile.caddy")
-      ".dockerignore"      = file("${path.module}/files/dockerignore")
-      "refresh.sh"         = local.refresh_sh
-      "caddy/Caddyfile"    = local.caddyfile
-    },
-    local.service_files,
-  )
+  # Platform files delivered to the host. Service payloads are delivered by
+  # each service's module (aws_ssm_parameter.files); refresh.sh pulls the
+  # whole config/ path regardless of which module created a param.
+  config_files = {
+    "docker-compose.yml" = file("${path.module}/../docker-compose.yml")
+    "Dockerfile.caddy"   = file("${path.module}/files/Dockerfile.caddy")
+    ".dockerignore"      = file("${path.module}/files/dockerignore")
+    "refresh.sh"         = local.refresh_sh
+    "caddy/Caddyfile"    = local.caddyfile
+  }
 
   user_data = templatefile("${path.module}/files/cloud-init.sh.tftpl", {
     region      = var.aws_region

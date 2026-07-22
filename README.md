@@ -23,7 +23,7 @@ graphiti.mcp.nickawilliams.com --443--> Caddy (auto-TLS + bearer auth)
   `*.mcp.nickawilliams.com` wildcard via Route53 DNS-01). No SSH; shell access
   is via SSM Session Manager (`make ssm`).
 - **Auth**: Caddy enforces a static bearer token **per service** (rotate one
-  with `terraform apply -replace='random_password.service_bearer["<name>"]'`
+  with `terraform apply -replace='module.<name>.random_password.bearer'`
   then `make deploy`; read tokens via
   `terraform output -json service_bearer_tokens`). Backends bind to localhost
   only, so the sole public surface is Caddy `:443`.
@@ -39,22 +39,28 @@ The dependency arrow only points inward: `[ infrastructure/common ] <-- [ mcp ]`
 
 ## Layout
 
-The repo is partitioned by concern: `terraform/` is the shared platform (host,
-DNS, Caddy, delivery), `services/<name>/` is everything a single MCP service
-runs (its compose stack + config), `docs/<name>/` its documentation. The
-top level mirrors `/opt/mcp` on the host: `docker-compose.yml` and each
-`services/<name>/` land there at the same relative paths.
+The repo is partitioned by concern: `terraform/` is all IaC — a root platform
+module (host, DNS, Caddy, delivery) plus one single-use module per service —
+and `services/<name>/` is a service's runtime payload and docs. The top level
+mirrors `/opt/mcp` on the host: `docker-compose.yml` and each
+`services/<name>/` land there at the same relative paths (minus
+documentation, which stays local). Future non-IaC codebases (e.g. an MCP
+gateway) slot in as new top-level directories.
 
 ```
 mcp/
 ├── docker-compose.yml    # platform compose: Caddy + include of each service
 ├── services/
-│   └── graphiti/         # one directory per MCP service
+│   └── graphiti/         # one payload directory per MCP service
 │       ├── compose.yml   #   its containers (included by the root compose)
-│       └── config.yaml   #   its config (any non-.md file here ships to host)
-├── docs/
-│   └── graphiti/         # per-service docs (client instruction block, etc.)
-├── terraform/            # platform IaC; <service>.tf for service-owned extras
+│       ├── config.yaml   #   its config (ships to the host; so does any
+│       │                 #   other file here except docs/ and *.md)
+│       └── docs/         #   its docs (client instruction block, etc.)
+├── terraform/            # root platform module (host, DNS, Caddy, delivery)
+│   ├── services.tf       #   service manifest: one module block per service
+│   └── modules/
+│       └── graphiti/     #   per-service module: registry identity, token,
+│                         #   DNS, file delivery, service-specific extras
 ├── Makefile              # ops wrapper (op run + terraform; ssm/logs/deploy)
 ├── .env                  # 1Password op:// refs, gitignored (see Credentials)
 └── README.md
@@ -90,10 +96,15 @@ script cloud-init runs at first boot).
 1. Create `services/<name>/compose.yml` (its containers; relative paths are
    from `/opt/mcp`, e.g. `./services/<name>/config.yaml`, `./data/<dir>`) and
    add an `include` entry for it in the root `docker-compose.yml`.
-2. Add an entry to the `services` map in `terraform/locals.tf` (subdomain,
-   upstream, MCP path, data dirs). This alone yields the DNS record, the
-   bearer-gated Caddy vhost, its token, and file delivery to the host.
-3. If it needs service-specific resources (API keys, SSM secrets), give it a
-   `terraform/<name>.tf` — see `graphiti.tf` for the pattern. Secret basenames
-   must be unique across services (they share the host's `.env`).
+2. Create `terraform/modules/<name>/` — copy `modules/graphiti/` as the
+   scaffold and adjust: the registry identity (subdomain, upstream, MCP path,
+   data dirs), the payload dir, and any service-specific extras (API keys,
+   SSM secrets). The scaffold already yields the DNS record, the bearer-gated
+   Caddy vhost + token, and file delivery to the host. Secret basenames must
+   be unique across services (they share the host's `.env`).
+3. Register it: a `module "<name>"` block in `terraform/services.tf` and
+   entries in the `services` / `service_tokens` maps in `terraform/locals.tf`.
 4. `make plan && make apply && make deploy`.
+
+Removing a service is the inverse: delete both directories and the manifest
+entries; the module's resources (params, DNS, token) retire with it.
