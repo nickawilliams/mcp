@@ -27,9 +27,11 @@ locals {
     if !endswith(f, ".md") && !startswith(f, "docs/")
   }
 
-  # Account ids as a static list: for_each may not range over sensitive
-  # values, so the ids live here and only the passwords are sensitive.
-  accounts = ["default", "accounts", "gmail", "work"]
+  # The managed account set is defined by the caller's map keys. for_each
+  # may not range over a sensitive map, so the ids are unwrapped — the ids
+  # themselves aren't secret, only the password values are (and those stay
+  # sensitive).
+  account_ids = toset(nonsensitive(keys(var.account_passwords)))
 }
 
 resource "random_password" "bearer" {
@@ -60,7 +62,7 @@ resource "aws_ssm_parameter" "files" {
 # host's single .env); compose fans each out to the app's IMAP+SMTP pair.
 
 resource "aws_ssm_parameter" "account_password" {
-  for_each = toset(local.accounts)
+  for_each = local.account_ids
 
   name  = "/${var.path_prefix}/secrets/MAIL_${upper(each.key)}_PASSWORD"
   type  = "SecureString"

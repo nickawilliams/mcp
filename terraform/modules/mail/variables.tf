@@ -19,7 +19,12 @@ variable "host_ip" {
 }
 
 variable "account_passwords" {
-  description = "Mail account passwords keyed by account id (default/accounts/gmail/work)"
+  description = "Mail account passwords keyed by account id. The keys define the managed account set: each gets a MAIL_<ID>_PASSWORD SecureString, interpolated by the account's entry in services/mail/compose.yaml (which owns the rest of the account config — hosts, users, ports)."
   type        = map(string)
   sensitive   = true
+
+  validation {
+    condition     = length(var.account_passwords) > 0
+    error_message = "At least one mail account is required."
+  }
 }
