@@ -1,5 +1,5 @@
 # graphiti: knowledge-graph long-term-memory MCP server + its FalkorDB store.
-# Included by the root docker-compose.yml with project_directory rooted at the
+# Included by the root docker-compose.yaml with project_directory rooted at the
 # app dir (/opt/mcp on the host), so relative paths here are from that root,
 # NOT from this file's directory. Both services expose their ports on the
 # compose network for Caddy and bind to 127.0.0.1 for SSM-tunnel debugging

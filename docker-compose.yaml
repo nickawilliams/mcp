@@ -1,12 +1,12 @@
 # Platform compose: Caddy (public TLS + bearer auth) is the only service
 # defined here and the only one that publishes to the world (80/443). Each MCP
-# service contributes its own stack via include (services/<name>/compose.yml);
+# service contributes its own stack via include (services/<name>/compose.yaml);
 # +1 service = +1 include line. `project_directory: .` pins every relative
 # path in the included files (volumes, .env) to this file's directory, which
 # is /opt/mcp on the host. Interpolation here is docker-compose's
 # ${VAR:-default}; values come from ./.env (secrets from SSM).
 include:
-  - path: services/graphiti/compose.yml
+  - path: services/graphiti/compose.yaml
     project_directory: .
 
 services:

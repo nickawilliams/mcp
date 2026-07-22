@@ -42,27 +42,27 @@ The dependency arrow only points inward: `[ infrastructure/common ] <-- [ mcp ]`
 The repo is partitioned by concern: `terraform/` is all IaC — a root platform
 module (host, DNS, Caddy, delivery) plus one single-use module per service —
 and `services/<name>/` is a service's runtime payload and docs. The top level
-mirrors `/opt/mcp` on the host: `docker-compose.yml` and each
+mirrors `/opt/mcp` on the host: `docker-compose.yaml` and each
 `services/<name>/` land there at the same relative paths (minus
 documentation, which stays local). Future non-IaC codebases (e.g. an MCP
 gateway) slot in as new top-level directories.
 
 ```
 mcp/
-├── docker-compose.yml    # platform compose: Caddy + include of each service
+├── docker-compose.yaml    # platform compose: Caddy + include of each service
 ├── services/
-│   └── graphiti/         # one payload directory per MCP service
-│       ├── compose.yml   #   its containers (included by the root compose)
-│       ├── config.yaml   #   its config (ships to the host; so does any
-│       │                 #   other file here except docs/ and *.md)
-│       └── docs/         #   its docs (client instruction block, etc.)
-├── terraform/            # root platform module (host, DNS, Caddy, delivery)
-│   ├── services.tf       #   service manifest: one module block per service
+│   └── graphiti/          # one payload directory per MCP service
+│       ├── compose.yaml   #   its containers (included by the root compose)
+│       ├── config.yaml    #   its config (ships to the host; so does any
+│       │                  #   other file here except docs/ and *.md)
+│       └── docs/          #   its docs (client instruction block, etc.)
+├── terraform/             # root platform module (host, DNS, Caddy, delivery)
+│   ├── services.tf        #   service manifest: one module block per service
 │   └── modules/
-│       └── graphiti/     #   per-service module: registry identity, token,
-│                         #   DNS, file delivery, service-specific extras
-├── Makefile              # ops wrapper (op run + terraform; ssm/logs/deploy)
-├── .env                  # 1Password op:// refs, gitignored (see Credentials)
+│       └── graphiti/      #   per-service module: registry identity, token,
+│                          #   DNS, file delivery, service-specific extras
+├── Makefile               # ops wrapper (op run + terraform; ssm/logs/deploy)
+├── .env                   # 1Password op:// refs, gitignored (see Credentials)
 └── README.md
 ```
 
@@ -93,9 +93,9 @@ script cloud-init runs at first boot).
 
 ## Adding a service
 
-1. Create `services/<name>/compose.yml` (its containers; relative paths are
+1. Create `services/<name>/compose.yaml` (its containers; relative paths are
    from `/opt/mcp`, e.g. `./services/<name>/config.yaml`, `./data/<dir>`) and
-   add an `include` entry for it in the root `docker-compose.yml`.
+   add an `include` entry for it in the root `docker-compose.yaml`.
 2. Create `terraform/modules/<name>/` — copy `modules/graphiti/` as the
    scaffold and adjust: the registry identity (subdomain, upstream, MCP path,
    data dirs), the payload dir, and any service-specific extras (API keys,

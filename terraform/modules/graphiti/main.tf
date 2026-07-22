@@ -6,7 +6,7 @@
 # in the shared context via this module's variables.
 
 locals {
-  # Registry identity — must agree with this service's compose.yml.
+  # Registry identity — must agree with this service's compose.yaml.
   service = {
     subdomain = "graphiti"
     upstream  = "graphiti-mcp:8000"

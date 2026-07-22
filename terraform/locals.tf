@@ -83,11 +83,11 @@ locals {
   # each service's module (aws_ssm_parameter.files); refresh.sh pulls the
   # whole config/ path regardless of which module created a param.
   config_files = {
-    "docker-compose.yml" = file("${path.module}/../docker-compose.yml")
-    "Dockerfile.caddy"   = file("${path.module}/files/Dockerfile.caddy")
-    ".dockerignore"      = file("${path.module}/files/dockerignore")
-    "refresh.sh"         = local.refresh_sh
-    "caddy/Caddyfile"    = local.caddyfile
+    "docker-compose.yaml" = file("${path.module}/../docker-compose.yaml")
+    "Dockerfile.caddy"    = file("${path.module}/files/Dockerfile.caddy")
+    ".dockerignore"       = file("${path.module}/files/dockerignore")
+    "refresh.sh"          = local.refresh_sh
+    "caddy/Caddyfile"     = local.caddyfile
   }
 
   user_data = templatefile("${path.module}/files/cloud-init.sh.tftpl", {
