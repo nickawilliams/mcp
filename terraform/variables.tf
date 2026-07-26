@@ -28,12 +28,6 @@ variable "instance_type" {
   default     = "t4g.small"
 }
 
-variable "acme_email" {
-  description = "Email for the Let's Encrypt account (blank = anonymous)"
-  type        = string
-  default     = ""
-}
-
 # Mail account passwords (op://-sourced via .env as TF_VAR_*). Scalars, not a
 # map: `op run` only resolves values that are exactly an op:// reference.
 

@@ -1,30 +1,17 @@
 # mail — multi-account IMAP/SMTP MCP service (tecnologicachile/mail-mcp
 # behind an in-container supergateway stdio->HTTP bridge).
 # Owns everything keyed by this service: its registry identity (exported for
-# the platform's aggregation), bearer token, DNS record, file delivery, and
-# service-specific extras (one password per mail account). Platform
-# singletons (host, Caddy, refresh.sh) live in the root module, which wires
-# in the shared context via this module's variables.
+# the platform's aggregation), bearer token, DNS record, and service-specific
+# extras (one password per mail account). Platform singletons (host, Caddy)
+# live in the root module, which wires in the shared context via this
+# module's variables. Files (compose, Dockerfile) reach the host via the git
+# checkout — services/mail/ — not via terraform.
 
 locals {
-  # Registry identity — must agree with this service's compose.yaml.
+  # Registry identity — must agree with this service's compose.yaml and its
+  # vhost block in caddy/Caddyfile.
   service = {
     subdomain = "mail"
-    upstream  = "mail-mcp:8080"
-    path      = "/mcp"
-    data_dirs = []
-  }
-
-  # This service's payload directory (relative reach across the repo:
-  # modules live under terraform/, payloads under services/).
-  service_dir = "${path.module}/../../../services/mail"
-
-  # Everything in the service directory ships to the host at the same
-  # relative path, except documentation.
-  files = {
-    for f in fileset(local.service_dir, "**") :
-    f => file("${local.service_dir}/${f}")
-    if !endswith(f, ".md") && !startswith(f, "docs/")
   }
 
   # The managed account set is defined by the caller's map keys. for_each
@@ -47,19 +34,21 @@ resource "aws_route53_record" "service" {
   records = [var.host_ip]
 }
 
-resource "aws_ssm_parameter" "files" {
-  for_each = local.files
-
-  name  = "/${var.path_prefix}/config/services/mail/${each.key}"
-  type  = "String"
-  value = each.value
+# The token rides the secrets path so refresh.sh lands it in the host .env,
+# where compose hands it to Caddy for this service's vhost gate
+# ({$MCP_TOKEN_MAIL} in caddy/Caddyfile). Secret basenames must be unique
+# across services (refresh.sh flattens all of /secrets/* into the host's
+# single .env).
+resource "aws_ssm_parameter" "token" {
+  name  = "/${var.path_prefix}/secrets/MCP_TOKEN_MAIL"
+  type  = "SecureString"
+  value = random_password.bearer.result
 }
 
 # Service-specific extras
 # ==============================================================================
-# One SecureString per account password. Basenames (MAIL_<ID>_PASSWORD) must
-# stay unique repo-wide (refresh.sh flattens all of /secrets/* into the
-# host's single .env); compose fans each out to the app's IMAP+SMTP pair.
+# One SecureString per account password; basenames (MAIL_<ID>_PASSWORD)
+# unique repo-wide. Compose fans each out to the app's IMAP+SMTP pair.
 
 resource "aws_ssm_parameter" "account_password" {
   for_each = local.account_ids

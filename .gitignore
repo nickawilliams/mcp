@@ -7,3 +7,7 @@
 *.tfplan
 crash.log
 crash.*.log
+
+# Host runtime content (the host is a checkout of this repo; these live
+# alongside it untracked and must survive `git reset --hard`)
+/data/

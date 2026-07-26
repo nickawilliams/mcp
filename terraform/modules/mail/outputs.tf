@@ -1,5 +1,5 @@
 output "service" {
-  description = "Registry entry aggregated by the platform (Caddy vhost, refresh.sh data dirs, service URLs)"
+  description = "Registry entry aggregated by the platform (DNS, service URLs)"
   value       = local.service
 }
 

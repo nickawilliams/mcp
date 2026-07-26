@@ -33,6 +33,12 @@ Caddy writes a structured access log (audit trail) to docker logs.
   then `make deploy`; read tokens via
   `terraform output -json service_bearer_tokens`). Backends bind to localhost
   only, so the sole public surface is Caddy `:443`.
+- **Delivery**: git is the source of truth for files — the host's `/opt/mcp`
+  is a checkout of this (public) repo, advanced by `make deploy` (fetch +
+  `reset --hard origin/main`, then `scripts/refresh.sh`). Terraform delivers
+  only what it owns: AWS resources and secrets (SSM `/common/mcp/secrets/*`,
+  flattened into the host `.env` by refresh.sh). Untracked runtime content
+  (`data/`, `.env`) lives alongside the checkout.
 
 ## This repo vs. the infrastructure core
 
@@ -46,27 +52,31 @@ The dependency arrow only points inward: `[ infrastructure/common ] <-- [ mcp ]`
 ## Layout
 
 The repo is partitioned by concern: `terraform/` is all IaC — a root platform
-module (host, DNS, Caddy, delivery) plus one single-use module per service —
-and `services/<name>/` is a service's runtime payload and docs. The top level
-mirrors `/opt/mcp` on the host: `docker-compose.yaml` and each
-`services/<name>/` land there at the same relative paths (minus
-documentation, which stays local). Future non-IaC codebases (e.g. an MCP
-gateway) slot in as new top-level directories.
+module (host, DNS, secrets) plus one single-use module per service — and
+`services/<name>/` is a service's runtime payload and docs. The repo root IS
+`/opt/mcp` on the host (a git checkout), so every tracked path is already at
+its delivered location. Future non-IaC codebases (e.g. an MCP gateway) slot
+in as new top-level directories.
 
 ```
 mcp/
 ├── docker-compose.yaml    # platform compose: Caddy + include of each service
+├── Dockerfile.caddy       # Caddy + Route53 DNS plugin (built on the host)
+├── caddy/
+│   └── Caddyfile          # TLS + bearer-gated vhost per service (tokens
+│                          #   arrive as {$MCP_TOKEN_*} env at parse time)
+├── scripts/
+│   └── refresh.sh         # host sync: SSM secrets -> .env, compose reconcile
 ├── services/
 │   └── graphiti/          # one payload directory per MCP service
 │       ├── compose.yaml   #   its containers (included by the root compose)
-│       ├── config.yaml    #   its config (ships to the host; so does any
-│       │                  #   other file here except docs/ and *.md)
+│       ├── config.yaml    #   its config
 │       └── docs/          #   its docs (client instruction block, etc.)
-├── terraform/             # root platform module (host, DNS, Caddy, delivery)
+├── terraform/             # root platform module (host, DNS, secrets)
 │   ├── services.tf        #   service manifest: one module block per service
 │   └── modules/
 │       └── graphiti/      #   per-service module: registry identity, token,
-│                          #   DNS, file delivery, service-specific extras
+│                          #   DNS, service-specific extras
 ├── Makefile               # ops wrapper (op run + terraform; ssm/logs/deploy)
 ├── .env                   # 1Password op:// refs, gitignored (see Credentials)
 └── README.md
@@ -74,7 +84,7 @@ mcp/
 
 - **State key**: `525999333867/us-west-1/nickawilliams/common/mcp/terraform.tfstate`
   in the `terraform-state-nickawilliams` bucket (S3-native locking).
-- **Resource naming**: `common-mcp-<resource>`. **SSM paths**: `/common/mcp/{config,secrets}/*`.
+- **Resource naming**: `common-mcp-<resource>`. **SSM paths**: `/common/mcp/secrets/*`.
 
 ## Credentials
 
@@ -89,13 +99,15 @@ gitignored.
 make init
 make fmt validate
 make plan
-make apply    # create/update AWS resources + push rendered config to SSM
-make deploy   # host re-pulls config/secrets from SSM and reconciles compose
+make apply    # create/update AWS resources + SSM secrets
+make deploy   # host: git fetch + reset --hard origin/main, then refresh.sh
 ```
 
-`apply` updates the SSM parameters; the running host only picks them up on
-`deploy` (which runs `refresh.sh` on the box via SSM send-command — the same
-script cloud-init runs at first boot).
+Files deploy via **git push + `make deploy`** (the host advances its checkout,
+re-pulls secrets from SSM, and reconciles compose — via SSM send-command, the
+same sequence cloud-init runs at first boot). `apply` is only needed when AWS
+resources or secret values change. Unpushed work never reaches the host;
+`make deploy` warns when HEAD ≠ origin/main.
 
 `make` is also the CI control plane: GitHub Actions workflows under
 `.github/workflows/` are thin wrappers over make targets (e.g.
@@ -108,16 +120,21 @@ provider plumbing (checkout, registry login, runners). See `AGENTS.md`.
 1. Create `services/<name>/compose.yaml` (its containers; relative paths are
    from `/opt/mcp`, e.g. `./services/<name>/config.yaml`, `./data/<dir>`),
    declaring and joining its own network. In the root `docker-compose.yaml`,
-   add an `include` entry, declare the network, and attach caddy to it.
-2. Create `terraform/modules/<name>/` — copy `modules/graphiti/` as the
-   scaffold and adjust: the registry identity (subdomain, upstream, MCP path,
-   data dirs), the payload dir, and any service-specific extras (API keys,
-   SSM secrets). The scaffold already yields the DNS record, the bearer-gated
-   Caddy vhost + token, and file delivery to the host. Secret basenames must
-   be unique across services (they share the host's `.env`).
-3. Register it: a `module "<name>"` block in `terraform/services.tf` and
+   add an `include` entry, declare the network, attach caddy to it, and add
+   the `MCP_TOKEN_<NAME>=${MCP_TOKEN_<NAME>}` caddy env line.
+2. Add the service's vhost block to `caddy/Caddyfile` (host matcher, bearer
+   gate on `{$MCP_TOKEN_<NAME>}`, rewrites, `reverse_proxy`). If it has
+   persistent data, add its dir to the `mkdir -p data/...` line in
+   `scripts/refresh.sh`.
+3. Create `terraform/modules/<name>/` — copy `modules/graphiti/` as the
+   scaffold and adjust: the registry identity (subdomain), the token param
+   basename, and any service-specific extras (API keys, SSM secrets). The
+   scaffold already yields the DNS record and the bearer token. Secret
+   basenames must be unique across services (they share the host's `.env`).
+4. Register it: a `module "<name>"` block in `terraform/services.tf` and
    entries in the `services` / `service_tokens` maps in `terraform/locals.tf`.
-4. `make plan && make apply && make deploy`.
+5. `make plan && make apply`, then commit + push + `make deploy`.
 
-Removing a service is the inverse: delete both directories and the manifest
-entries; the module's resources (params, DNS, token) retire with it.
+Removing a service is the inverse: delete both directories and the manifest,
+compose, and Caddyfile entries; the module's resources (token param, DNS)
+retire with it.

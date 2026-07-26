@@ -47,11 +47,9 @@ locals {
   mcp_domain  = "mcp.${var.domain_primary}"
 
   # Aggregated service registry. Each service module (see services.tf) owns
-  # its identity and exports it here; everything platform-shared — the Caddy
-  # vhosts, refresh.sh data dirs, service URLs — derives from these maps.
-  # `path` is the upstream image's MCP endpoint; Caddy maps the bare hostname
-  # onto it so clients never need to know it. `data_dirs` are bind-mount
-  # targets created under /opt/mcp/data (the persistent EBS volume).
+  # its identity and exports it here; platform-shared derivations (service
+  # URLs) come from these maps. Files reach the host via the git checkout,
+  # so the registry carries only what terraform itself still consumes.
   services = {
     graphiti = module.graphiti.service
     mail     = module.mail.service
@@ -60,36 +58,6 @@ locals {
   service_tokens = {
     graphiti = module.graphiti.token
     mail     = module.mail.token
-  }
-
-  # Platform dirs (caddy) + every service's declared data dirs.
-  data_dirs = concat(
-    ["caddy", "caddy-config"],
-    flatten([for _, svc in local.services : svc.data_dirs]),
-  )
-
-  caddyfile = templatefile("${path.module}/files/Caddyfile.tftpl", {
-    mcp_domain = local.mcp_domain
-    acme_email = var.acme_email
-    services   = local.services
-    tokens     = local.service_tokens
-  })
-
-  refresh_sh = templatefile("${path.module}/files/refresh.sh.tftpl", {
-    region      = var.aws_region
-    path_prefix = local.path_prefix
-    data_dirs   = local.data_dirs
-  })
-
-  # Platform files delivered to the host. Service payloads are delivered by
-  # each service's module (aws_ssm_parameter.files); refresh.sh pulls the
-  # whole config/ path regardless of which module created a param.
-  config_files = {
-    "docker-compose.yaml" = file("${path.module}/../docker-compose.yaml")
-    "Dockerfile.caddy"    = file("${path.module}/files/Dockerfile.caddy")
-    ".dockerignore"       = file("${path.module}/files/dockerignore")
-    "refresh.sh"          = local.refresh_sh
-    "caddy/Caddyfile"     = local.caddyfile
   }
 
   user_data = templatefile("${path.module}/files/cloud-init.sh.tftpl", {

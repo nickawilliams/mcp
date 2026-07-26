@@ -1,16 +1,15 @@
-# Rendered by Terraform (templatefile). Terraform interpolation is $${...}; Caddy
-# placeholders use {env.X} (single brace) and pass through untouched.
-{
-%{ if acme_email != "" ~}
-	email ${acme_email}
-%{ endif ~}
-}
+# Tracked literal config, delivered via the host's git checkout and mounted
+# at /etc/caddy. Bearer tokens arrive as caddy-container environment
+# variables (MCP_TOKEN_<SERVICE>, fanned out of the host .env by
+# docker-compose) and substitute textually at Caddyfile parse time ({$VAR}),
+# so a token rotation lands on the next compose reconcile + caddy reload.
 
 # One wildcard cert for *.mcp.nickawilliams.com via Route53 DNS-01 (keeps
 # individual service names out of Certificate Transparency logs). Per-service
 # routing is by host matcher; every service is gated by its own bearer token
 # before proxying, so one credential can be rotated without touching the rest.
-*.${mcp_domain} {
+# +1 service = +1 vhost block (and its MCP_TOKEN_* env line in compose).
+*.mcp.nickawilliams.com {
 	tls {
 		dns route53
 	}
@@ -22,25 +21,34 @@
 		format json
 	}
 
-%{ for name, svc in services ~}
-	@${name} host ${svc.subdomain}.${mcp_domain}
-	handle @${name} {
-		@${name}-unauth not header Authorization "Bearer ${tokens[name]}"
-		respond @${name}-unauth "Unauthorized" 401
+	@graphiti host graphiti.mcp.nickawilliams.com
+	handle @graphiti {
+		@graphiti-unauth not header Authorization "Bearer {$MCP_TOKEN_GRAPHITI}"
+		respond @graphiti-unauth "Unauthorized" 401
 		# The bare hostname IS the endpoint: map / onto the upstream's MCP
 		# path, and collapse the trailing-slash variant that would otherwise
 		# 307-redirect (with an http:// Location) at the upstream.
-		rewrite / ${svc.path}
-		rewrite ${svc.path}/ ${svc.path}
+		rewrite / /mcp
+		rewrite /mcp/ /mcp
 		# Some upstreams (the MCP SDK's DNS-rebinding guard) only accept a
 		# localhost Host, so present one matching the upstream's port (site
 		# routing already matched on the real host above; harmless where the
 		# upstream doesn't validate Host).
-		reverse_proxy ${svc.upstream} {
-			header_up Host localhost:${element(split(":", svc.upstream), 1)}
+		reverse_proxy graphiti-mcp:8000 {
+			header_up Host localhost:8000
 		}
 	}
-%{ endfor ~}
+
+	@mail host mail.mcp.nickawilliams.com
+	handle @mail {
+		@mail-unauth not header Authorization "Bearer {$MCP_TOKEN_MAIL}"
+		respond @mail-unauth "Unauthorized" 401
+		rewrite / /mcp
+		rewrite /mcp/ /mcp
+		reverse_proxy mail-mcp:8080 {
+			header_up Host localhost:8080
+		}
+	}
 
 	# Unmatched subdomains: no OAuth metadata, just 404.
 	handle {

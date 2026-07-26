@@ -1,0 +1,13 @@
+# The Caddy image build uses the repo root (/opt/mcp on the host) as its
+# context; the build COPYs nothing from it, so this only trims what gets
+# sent to the docker daemon: the graph data (grows unbounded), secrets,
+# and everything else that isn't build input.
+.git/
+data/
+.env
+services/
+terraform/
+scripts/
+caddy/
+Makefile
+*.md

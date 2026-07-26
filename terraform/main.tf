@@ -179,22 +179,6 @@ resource "aws_iam_instance_profile" "host" {
   role = aws_iam_role.host.name
 }
 
-# Config delivery (SSM String params)
-# ==============================================================================
-# Platform config, pulled by the host at boot and re-pulled via `make deploy`
-# (refresh.sh) without replacing the instance. Service payloads are delivered
-# the same way by each service's module. Static files are read raw (their
-# ${VAR} survive for compose runtime); Caddyfile and refresh.sh are rendered,
-# and the Caddyfile rides encrypted (it embeds the bearer tokens).
-
-resource "aws_ssm_parameter" "config" {
-  for_each = local.config_files
-
-  name  = "/${local.path_prefix}/config/${each.key}"
-  type  = each.key == "caddy/Caddyfile" ? "SecureString" : "String"
-  value = each.value
-}
-
 # Compute
 # ==============================================================================
 # arm64 AL2023 host; graph data on a separate EBS volume so it survives instance

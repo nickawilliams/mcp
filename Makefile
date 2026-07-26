@@ -55,19 +55,21 @@ logs:
 		--document-name AWS-StartInteractiveCommand \
 		--parameters 'command=["cd /opt/mcp && docker compose logs -f --tail=200"]'
 
-# deploy: tell the host to re-pull rendered config/secrets from SSM and
-# reconcile compose (services restart only if their config changed). Run after
-# `make apply` whenever config changed. Fetches refresh.sh fresh first, so the
-# sync logic itself is deployable through the same path.
-SSM_CONFIG = /common/mcp/config
+# deploy: advance the host's checkout to origin/main, then re-pull secrets
+# from SSM and reconcile compose (services restart only if their config
+# changed). Files deploy via git push + this target; `make apply` is only
+# needed when AWS resources or secrets changed.
 
-## Sync the host with SSM config/secrets and reconcile compose
+## Sync the host with the pushed repo + SSM secrets and reconcile compose
 deploy:
-	@cmd_id=$$(aws ssm send-command \
+	@if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
+		echo "warning: HEAD != origin/main — unpushed work will not deploy" >&2; \
+	fi; \
+	cmd_id=$$(aws ssm send-command \
 		--targets "Key=InstanceIds,Values=$(INSTANCE)" \
 		--document-name "AWS-RunShellScript" \
-		--comment "mcp deploy: refresh config from SSM" \
-		--parameters 'commands=["aws ssm get-parameter --region us-west-1 --name $(SSM_CONFIG)/refresh.sh --query Parameter.Value --output text > /opt/mcp/refresh.sh","bash /opt/mcp/refresh.sh"]' \
+		--comment "mcp deploy: pull repo + refresh secrets" \
+		--parameters 'commands=["git -C /opt/mcp fetch origin","git -C /opt/mcp reset --hard origin/main","bash /opt/mcp/scripts/refresh.sh"]' \
 		--query Command.CommandId --output text); \
 	echo "deploy: $$cmd_id (waiting...)"; \
 	aws ssm wait command-executed --command-id "$$cmd_id" --instance-id "$(INSTANCE)" || true; \

@@ -186,9 +186,11 @@ does **not** live in this repo — it arrives as an external image dependency
 ### C6 — Gateway as an external image dependency (own repo)
 - **Need**: a home for the (possibly custom, Go) gateway codebase and a
   delivery path for its artifact, without reshaping this repo.
-- **v1 limitation**: this repo builds no software — delivery is small text
-  files via SSM params (4–8 KB caps); it cannot carry a codebase, and on-host
-  source builds are undesirable (2026-07-21).
+- **v1 limitation**: this repo builds no software — it cannot carry a
+  codebase, and on-host source builds are undesirable (2026-07-21).
+  *Update 2026-07-25: the SSM file bus is retired — the host now tracks the
+  git repo directly and SSM carries secrets only — but the no-codebase rule
+  stands; the gateway still arrives as an external image.*
 - **Candidate v2 mechanism**: the gateway lives in its own repo with its own
   CI/releases, publishing a container image; this repo consumes it as a
   pinned image reference (digest/version tag, never `:latest` — see the
@@ -231,7 +233,9 @@ Small operational gaps to close within v1, independent of the v2 vision:
 - ~~**Implement `make deploy`**~~ — done 2026-07-21: `refresh.sh` (rendered,
   SSM-delivered) pulls all config/secrets by path and reconciles compose; both
   cloud-init and `make deploy` run it, so first boot and config pushes are one
-  mechanism.
+  mechanism. *Superseded 2026-07-25: delivery is now GitOps — the host is a
+  checkout of this repo, refresh.sh is a tracked literal script, and SSM
+  carries secrets only.*
 - ~~**Token-rotation runbook**~~ — done 2026-07-21 (per-service tokens landed
   with the services/ restructure):
   `terraform apply -replace='module.<name>.random_password.bearer'` →

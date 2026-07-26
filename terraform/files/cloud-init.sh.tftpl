@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# MCP host bootstrap, rendered by Terraform. Shell expansion is escaped so it
-# survives templating. Config + secrets are pulled from SSM at boot; nothing
-# sensitive is baked into user_data.
+# MCP host bootstrap, rendered by Terraform (the one legitimately templated
+# file — user_data needs region/prefix). Shell expansion is escaped so it
+# survives templating. Files come from the git checkout, secrets from SSM;
+# nothing sensitive is baked into user_data.
 set -euo pipefail
 
 REGION="${region}"
@@ -12,8 +13,8 @@ DATA_DEV="/dev/nvme1n1" # the attached EBS data volume (Nitro naming)
 # --- SSM agent (present on standard AL2023; ensure it is up for debugging) ---
 systemctl enable --now amazon-ssm-agent || true
 
-# --- Docker + compose + buildx plugins --------------------------------------
-dnf install -y docker
+# --- Docker + compose + buildx plugins + git ---------------------------------
+dnf install -y docker git
 systemctl enable --now docker
 mkdir -p /usr/local/lib/docker/cli-plugins
 curl -fsSL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64" \
@@ -24,8 +25,14 @@ curl -fsSL "https://github.com/docker/buildx/releases/download/v0.19.0/buildx-v0
 	-o /usr/local/lib/docker/cli-plugins/docker-buildx
 chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx
 
-# --- Persistent data volume (format once, then mount) -----------------------
-mkdir -p "$${APP_DIR}"
+# --- Repo checkout (file delivery) -------------------------------------------
+# The app dir IS a clone of the platform repo (public, anonymous https);
+# `make deploy` advances it with fetch + reset --hard. Must precede the data
+# mount (clone needs a nonexistent/empty target).
+git clone https://github.com/nickawilliams/mcp.git "$${APP_DIR}"
+
+# --- Persistent data volume (format once, then mount) ------------------------
+# data/ is gitignored: untracked runtime content alongside the checkout.
 if ! blkid "$${DATA_DEV}" >/dev/null 2>&1; then
 	mkfs.ext4 -L mcp-data "$${DATA_DEV}"
 fi
@@ -34,10 +41,8 @@ grep -q "$${APP_DIR}/data" /etc/fstab ||
 mkdir -p "$${APP_DIR}/data"
 mount "$${APP_DIR}/data"
 
-# --- Sync config/secrets + launch -------------------------------------------
-# Delegated to refresh.sh (itself a config param) — the same path `make
-# deploy` uses, so first boot and every later config push are one mechanism.
-aws ssm get-parameter --region "$${REGION}" \
-	--name "/$${PREFIX}/config/refresh.sh" \
-	--query Parameter.Value --output text >"$${APP_DIR}/refresh.sh"
-bash "$${APP_DIR}/refresh.sh"
+# --- Sync secrets + launch ---------------------------------------------------
+# Delegated to the tracked refresh script — the same one `make deploy` runs,
+# so first boot and every later deploy are one mechanism.
+MCP_REGION="$${REGION}" MCP_PREFIX="$${PREFIX}" \
+	bash "$${APP_DIR}/scripts/refresh.sh"

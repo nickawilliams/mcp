@@ -45,16 +45,6 @@ moved {
 }
 
 moved {
-  from = aws_ssm_parameter.config["services/graphiti/compose.yml"]
-  to   = module.graphiti.aws_ssm_parameter.files["compose.yml"]
-}
-
-moved {
-  from = aws_ssm_parameter.config["services/graphiti/config.yaml"]
-  to   = module.graphiti.aws_ssm_parameter.files["config.yaml"]
-}
-
-moved {
   from = openai_project_service_account.graphiti
   to   = module.graphiti.openai_project_service_account.graphiti
 }

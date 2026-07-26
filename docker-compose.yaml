@@ -28,6 +28,10 @@ services:
       - mail
     environment:
       - AWS_REGION=us-west-1
+      # Per-service bearer tokens (from ./.env, SSM-sourced); the Caddyfile
+      # substitutes them at parse time ({$MCP_TOKEN_*}). +1 service = +1 line.
+      - MCP_TOKEN_GRAPHITI=${MCP_TOKEN_GRAPHITI}
+      - MCP_TOKEN_MAIL=${MCP_TOKEN_MAIL}
     volumes:
       # Directory (not file) mount: refresh.sh replaces files via mv, and a
       # single-file bind mount would pin the old inode forever. refresh.sh

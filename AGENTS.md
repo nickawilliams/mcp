@@ -13,9 +13,10 @@
 
 ## Deployment
 
-- `make apply` only updates AWS resources and SSM parameters. Nothing
-  reaches the running host until `make deploy`. A config change is not live
-  until both have run.
+- Files reach the host via git: commit + **push**, then `make deploy`
+  (the host checkout advances to origin/main and refresh.sh reconciles).
+  `make apply` is only for AWS resources and secret values. Unpushed work
+  never deploys.
 
 ## Commits
 
@@ -27,7 +28,8 @@
 - Template a delivered file (`*.tftpl`) only when it must embed values
   terraform knows (tokens, addresses, computed config). Keep everything
   else literal — literal compose/config files can be validated locally
-  (`docker compose config`) before a deploy cycle.
+  (`docker compose config`) before a deploy cycle. Exactly one templated
+  file remains: `cloud-init.sh.tftpl` (user_data needs region/prefix).
 - YAML files use the full `.yaml` extension, never `.yml`.
 - Architecture and design live in `README.md` and `ROADMAP.md` — this file
   stays behavioral.
