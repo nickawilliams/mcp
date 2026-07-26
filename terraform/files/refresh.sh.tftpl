@@ -39,6 +39,9 @@ for name in $(aws ssm get-parameters-by-path --region "$${REGION}" \
 	--query "Parameters[].Name" --output text); do
 	val="$(aws ssm get-parameter --region "$${REGION}" --with-decryption \
 		--name "$${name}" --query Parameter.Value --output text)"
+	# Compose interpolates $-sequences in project .env values; escape them
+	# so secrets containing `$` survive verbatim.
+	val="$${val//\$/\$\$}"
 	echo "$${name##*/}=$${val}" >>"$${APP_DIR}/.env.tmp"
 done
 mv "$${APP_DIR}/.env.tmp" "$${APP_DIR}/.env"

@@ -24,6 +24,10 @@
 
 ## Conventions
 
+- Template a delivered file (`*.tftpl`) only when it must embed values
+  terraform knows (tokens, addresses, computed config). Keep everything
+  else literal — literal compose/config files can be validated locally
+  (`docker compose config`) before a deploy cycle.
 - YAML files use the full `.yaml` extension, never `.yml`.
 - Architecture and design live in `README.md` and `ROADMAP.md` — this file
   stays behavioral.
