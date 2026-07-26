@@ -30,7 +30,8 @@ Caddy writes a structured access log (audit trail) to docker logs.
   is via SSM Session Manager (`make ssm`).
 - **Auth**: Caddy enforces a static bearer token **per service** (rotate one
   with `terraform apply -replace='module.<name>.random_password.bearer'`
-  then `make deploy`; read tokens via
+  then `make deploy`; clients read tokens from 1Password —
+  `op://Infrastructure/mcp-bearer-<name>/password` — or via
   `terraform output -json service_bearer_tokens`). Backends bind to localhost
   only, so the sole public surface is Caddy `:443`.
 - **Delivery**: git is the source of truth for files — the host's `/opt/mcp`
@@ -92,6 +93,17 @@ mcp/
 `op://` reference, resolved at run time by `op run --env-file=.env` (wrapped by
 the `Makefile`). AWS credentials come from the ambient profile. The file is
 gitignored.
+
+The `onepassword` provider authenticates as the **`mcp-terraform` service
+account** (read/write to the Infrastructure vault only; its token lives in
+the Private vault as `op-service-account-mcp-terraform`, fed through a
+`TF_VAR` so shell `op` keeps desktop-app auth). Terraform **writes the
+per-service bearer tokens back** to the Infrastructure vault as
+`mcp-bearer-<service>` items (naming grammar
+`<system>-<component>[-<instance>]`, `terraform` tag + `metadata` section —
+see the infrastructure repo's Credentials convention), so the vault always
+reflects what was last applied and clients configure tokens by `op://`
+reference instead of terraform output.
 
 ## Workflow
 

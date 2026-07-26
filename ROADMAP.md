@@ -164,7 +164,9 @@ does **not** live in this repo — it arrives as an external image dependency
   own machines; the two web connectors simply aren't wired up. Hardening landed
   with the mail service (2026-07-22): per-service tokens (already), per-service
   compose networks (no lateral container access to unauthenticated backends),
-  Caddy structured access logs (audit trail).
+  Caddy structured access logs (audit trail). Tokens live in 1Password
+  (`mcp-bearer-<svc>`, 2026-07-25), so client configs can hold `op://` refs
+  instead of literals.
 - *Logged: 2026-07-20*
 
 ### C5 — Cross-client behavior management
@@ -240,7 +242,9 @@ Small operational gaps to close within v1, independent of the v2 vision:
   with the services/ restructure):
   `terraform apply -replace='module.<name>.random_password.bearer'` →
   `make deploy` → update that service's clients
-  (`terraform output -json service_bearer_tokens`). Other services unaffected.
+  (`op://Infrastructure/mcp-bearer-<name>/password` refresh, or
+  `terraform output -json service_bearer_tokens`). Other services unaffected;
+  the 1Password item updates in the same apply (write-back, 2026-07-25).
 - **Pin the graphiti image to a digest** — currently rides mutable
   `zepai/knowledge-graph-mcp:standalone`. The silent-drift risk is real: upstream has
   reworded the instructions constant and uses nested env binding

@@ -22,6 +22,12 @@ variable "domain_primary" {
   default     = "nickawilliams.com"
 }
 
+variable "op_service_account_token" {
+  description = "1Password service account token (op://-sourced via .env)"
+  type        = string
+  sensitive   = true
+}
+
 variable "instance_type" {
   description = "EC2 instance type for the MCP host (arm64)"
   type        = string

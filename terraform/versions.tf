@@ -12,6 +12,11 @@ terraform {
       version = "~> 3"
     }
 
+    onepassword = {
+      source  = "1Password/onepassword"
+      version = "~> 3.3"
+    }
+
     openai = {
       source  = "jianyuan/openai"
       version = "~> 0.5"
