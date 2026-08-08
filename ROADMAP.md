@@ -138,7 +138,16 @@ does **not** live in this repo — it arrives as an external image dependency
   client (host-per-service already makes this clean).
 - *Logged: 2026-07-20*
 
-### C4 — Universal client auth (OAuth alongside bearer)
+### C4 — Universal client auth (OAuth alongside bearer) — **LANDED 2026-08-07**
+- **Landed**: dual-path auth live on every vhost (commit `ccb2684`). Identity
+  (Auth0 tenant, DCR flag, `auth.nickawilliams.com` custom domain) lives in the
+  infrastructure repo; this repo registers per-service audiences + default
+  third-party grants and validates JWTs offline at Caddy (caddy-jwt, JWKS).
+  End-to-end verified in production: DCR → PKCE → custom-domain-issued at+jwt
+  → 31 mail tools; audience isolation confirmed (mail-audience token 401s at
+  graphiti); static-bearer path regression-clean. The interim 404 scaffolding
+  is removed. Remaining (client-side, not platform): migrate client configs
+  to plain URLs and retire the mcp-remote shims.
 - **Need**: support the OAuth-only clients (claude.ai web connectors for individual
   accounts, ChatGPT) in addition to the header-capable dev tools.
 - **v1 limitation**: a single endpoint can't cleanly serve both — if it advertises
