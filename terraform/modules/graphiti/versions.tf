@@ -6,5 +6,9 @@ terraform {
     openai = {
       source = "jianyuan/openai"
     }
+
+    auth0 = {
+      source = "auth0/auth0"
+    }
   }
 }

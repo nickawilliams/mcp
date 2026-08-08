@@ -146,17 +146,60 @@ does **not** live in this repo — it arrives as an external image dependency
   discovery (live client bug; Claude Code #59467 / Cursor forum #156054,
   still-broken as of ~May 2026 — **re-verify before acting**, fast-moving). So v1
   deliberately serves *no* OAuth metadata (bearer only).
+  *Re-verified 2026-08-07 (empirically, scratch MCP server serving
+  protected-resource + AS metadata and WWW-Authenticate on 401): the bug is
+  **fixed** in Claude Code 2.1.220 and absent in Codex CLI 0.114.0 — both send a
+  configured static header on every request and never touch the OAuth endpoints
+  even when advertised; a headerless Claude Code entry correctly walks the full
+  OAuth path (401 → PRM → ASM → DCR → authorize). Cursor untested (GUI-only).
+  Conclusion: the **single universal endpoint** (bearer AND OAuth on one
+  hostname) is viable — no dual-hostname interim needed.*
+  *Phase 2 spike passed 2026-08-07 (scratch Auth0 tenant `nickawilliams`,
+  fully Terraform-managed): headerless Claude Code completed real DCR
+  (`/oidc/register`), PKCE auth-code with the RFC 8707 `resource` param, and
+  called the probe MCP server with an RS256 `rfc9068_profile` JWT verified
+  offline via JWKS — audience bound exactly to the resource identifier.
+  Key discovery: third-party (DCR) clients **always** need a client grant
+  regardless of the API's `allow_all` user policy; the production shape is a
+  per-service **default grant** (`auth0_client_grant` with
+  `default_for = "third_party_clients"`, `subject_type = "user"`) — supported
+  in the official provider (verified v1.54). Architecture decision (same
+  date): identity is a **core concern** — tenant-level Auth0 config + the
+  `auth.nickawilliams.com` custom domain (free tier includes exactly one;
+  it becomes the permanent issuer) live in the infrastructure repo; only
+  per-service `auth0_resource_server` + default grants live here, consuming
+  the issuer via `terraform_remote_state` exactly like `zone_id`.*
 - **Candidate v2 mechanism**: near-term — a **second hostname** (`<svc>-oauth.mcp.…`)
   with a managed IdP (WorkOS AuthKit / Auth0 / …) as authorization server and
   Caddy/graphiti as resource server; per-hostname isolation keeps the OAuth host
   from poisoning the bearer host. End-state — a **single universal endpoint** that
   offers bearer *and* OAuth once the client header-override bug is fixed.
+  **Cognito ruled out** (2026-08-07): no RFC 7591 dynamic client registration —
+  MCP clients DCR on first contact (observed empirically in the 2026-08-07
+  client tests), and the workaround is a custom APIGW+Lambda facade, i.e.
+  building the security-critical plumbing a managed IdP exists to avoid.
+  Static-bearer management stays local (Caddy string-compare + 1Password/
+  terraform loop) even after OAuth lands: WorkOS's API Keys product validates
+  via a per-request network call to WorkOS — a runtime dependency the machine
+  path exists to not have.
 - **Trigger to build**: wanting graphiti as a claude.ai-web or ChatGPT connector.
   **Escalated 2026-07-22**: the mail service (full read/write/send access to all
   mail accounts) now sits behind a static bearer token — C4 (or a Tailscale-only
   binding, which is a tenth of the effort but forecloses web connectors) is the
   **designated next major platform addition**. Interacts with C2/the gateway:
   a real identity layer is what token→group/tool enforcement wants to bind to.
+  **Escalated again 2026-08-07**: the bearer-only shape is now costing
+  *reliability*, not just reach — the `mcp-remote` stdio shim (required for
+  config parity with header-incapable clients) suffers OAuth-coordination
+  lockfile contention under many concurrent Claude instances (SIGTERM at the
+  client's 30 s ceiling orphans `~/.mcp-auth/*/_lock.json`; the next spawn
+  blocks on the dead holder → self-perpetuating `tools/list` timeouts; 29
+  occurrences in client logs). Interim mitigations shipped (stale-lock
+  cleanup; Caddyfile 404s on `/.well-known/oauth-*` probe paths ahead of the
+  bearer gate — **deliberate scaffolding, to be removed when this entry lands**,
+  since the OAuth host must serve exactly those paths). The structural fix is
+  this entry: native OAuth+bearer makes every client a plain-URL config and
+  retires the shim entirely.
 - **Caveats**: OAuth is hostile to headless/automation contexts (needs a browser);
   the bearer path must stay for scripts/CI. This is largely independent of the MCP
   gateway (it's a Caddy + IdP concern), so it can land on its own timeline.
@@ -225,6 +268,11 @@ does **not** live in this repo — it arrives as an external image dependency
   memory is and whether it should even live on personal AWS infra at all.
 - **Which gateway product** — needs a real capability survey focused on
   instructions-injection + group-enforcement + aggregation before v2 commits.
+- **ChatGPT connector tool-surface requirements.** ChatGPT compatibility is not
+  only auth (C4): its connector modes carry tool-shape expectations (deep
+  research wants `search`/`fetch` tools; developer mode relaxes this — verify
+  current state when wiring it up). Separate axis from identity; possibly a
+  gateway (C3) concern if services shouldn't each grow ChatGPT-shaped tools.
 
 ---
 

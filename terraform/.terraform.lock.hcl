@@ -17,6 +17,28 @@ provider "registry.terraform.io/1password/onepassword" {
   ]
 }
 
+provider "registry.terraform.io/auth0/auth0" {
+  version     = "1.54.1"
+  constraints = "~> 1.54"
+  hashes = [
+    "h1:pzYeJovgEVhfr+F4vaO5Aaw/V0pnZTKo0irJWkS20hQ=",
+    "zh:1efaf7269562f33de3672a1bc9fdd38ab2e1f97a089261ccf5b7817d6ff35c71",
+    "zh:2790ab6652fb47a9ff46393643cb9e909b403aa4727d0f4fc58febb8aec53934",
+    "zh:56375a10a8134e069227996ab244b7b4bfbfe94d53ab41f68bda1081281f9d73",
+    "zh:6d19ee8087006185435ddc9e908b399282928d0e997ba8217488cd9dfca58625",
+    "zh:831cdb095733899281a5bb992eadb2bd0f901c7245a5b12bc272173eb49e37f7",
+    "zh:8e99b70bfc396a167f935beb6df19275708896d57c1f12be87678572791288eb",
+    "zh:9e3128ab93ca21de8ad49cad6e24b6973f052e1b2c67b1821755cf648bda5417",
+    "zh:9ea8b0ebc3e90f3e52299857b17c4203a9f437011a49fa75955a119b4156916f",
+    "zh:bd05569e7f20d90494278fe4d66b1d3fb89233ea3598fc35b53265fe8c3d9335",
+    "zh:c0504539d3fa43639655c7bf0f618e6bad9c200e5eeebc181be21e85fa2f0b68",
+    "zh:ce9e08f27622790c18d28ba087684746ad2d209057765b9810e68950548561ea",
+    "zh:de91b33f93acb886f7d8255631a1c6751dc4cdf558ba1c6cae5f749fa8ccbd58",
+    "zh:e0764d927e505a1c9ebe6f0a47402d893f840327fc590654933c4e4d77f73f07",
+    "zh:fe81a2049f03d6e8f3c94fd568fd694739ee031e0754e206d6c8644fce3acb3e",
+  ]
+}
+
 provider "registry.terraform.io/hashicorp/aws" {
   version     = "6.55.0"
   constraints = "~> 6.0"

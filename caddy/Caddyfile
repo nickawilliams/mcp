@@ -3,12 +3,28 @@
 # variables (MCP_TOKEN_<SERVICE>, fanned out of the host .env by
 # docker-compose) and substitute textually at Caddyfile parse time ({$VAR}),
 # so a token rotation lands on the next compose reconcile + caddy reload.
+#
+# Auth is dual-path per service (ROADMAP C4, landed 2026-08-07):
+#   - static bearer: the machine credential (scripts/CI/debug) — validated
+#     locally by string compare, zero runtime dependencies.
+#   - OAuth 2.1: interactive MCP clients (Claude Code/Desktop, ChatGPT,
+#     Codex) discover the authorization server via the RFC 9728 metadata
+#     below, register dynamically, and present RS256 at+jwt access tokens
+#     minted by auth.nickawilliams.com (the infrastructure repo's Auth0
+#     tenant), verified offline against its JWKS — no per-request calls to
+#     the IdP. Audience = the service URL (matches each service's
+#     auth0_resource_server identifier in terraform).
+
+{
+	# jwtauth (ggicci/caddy-jwt, built into Dockerfile.caddy) is an auth
+	# handler; slot it where basicauth would run.
+	order jwtauth before basicauth
+}
 
 # One wildcard cert for *.mcp.nickawilliams.com via Route53 DNS-01 (keeps
 # individual service names out of Certificate Transparency logs). Per-service
-# routing is by host matcher; every service is gated by its own bearer token
-# before proxying, so one credential can be rotated without touching the rest.
-# +1 service = +1 vhost block (and its MCP_TOKEN_* env line in compose).
+# routing is by host matcher. +1 service = +1 vhost block (its MCP_TOKEN_*
+# env line in compose, and its audience in the module's terraform).
 *.mcp.nickawilliams.com {
 	tls {
 		dns route53
@@ -23,35 +39,91 @@
 
 	@graphiti host graphiti.mcp.nickawilliams.com
 	handle @graphiti {
-		@graphiti-unauth not header Authorization "Bearer {$MCP_TOKEN_GRAPHITI}"
-		respond @graphiti-unauth "Unauthorized" 401
-		# The bare hostname IS the endpoint: map / onto the upstream's MCP
-		# path, and collapse the trailing-slash variant that would otherwise
-		# 307-redirect (with an http:// Location) at the upstream.
-		rewrite / /mcp
-		rewrite /mcp/ /mcp
-		# Some upstreams (the MCP SDK's DNS-rebinding guard) only accept a
-		# localhost Host, so present one matching the upstream's port (site
-		# routing already matched on the real host above; harmless where the
-		# upstream doesn't validate Host).
-		reverse_proxy graphiti-mcp:8000 {
-			header_up Host localhost:8000
+		# RFC 9728 protected-resource metadata — unauthenticated by design:
+		# clients read it to find the authorization server before they have
+		# any token. `resource` must equal the terraform identifier exactly
+		# (clients echo it as the RFC 8707 resource param).
+		handle /.well-known/oauth-protected-resource {
+			header Content-Type application/json
+			respond `{"resource":"https://graphiti.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"]}` 200
+		}
+
+		# Machine path: static bearer, validated locally.
+		@graphiti-bearer header Authorization "Bearer {$MCP_TOKEN_GRAPHITI}"
+		handle @graphiti-bearer {
+			# The bare hostname IS the endpoint: map / onto the upstream's
+			# MCP path, and collapse the trailing-slash variant that would
+			# otherwise 307-redirect (with an http:// Location) at the
+			# upstream.
+			rewrite / /mcp
+			rewrite /mcp/ /mcp
+			# Some upstreams (the MCP SDK's DNS-rebinding guard) only accept
+			# a localhost Host, so present one matching the upstream's port.
+			reverse_proxy graphiti-mcp:8000 {
+				header_up Host localhost:8000
+			}
+		}
+
+		# OAuth path: everything else must carry a valid Auth0 JWT.
+		# Failures 401 into handle_errors below, which adds the discovery
+		# pointer.
+		handle {
+			jwtauth {
+				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
+				issuer_whitelist https://auth.nickawilliams.com/
+				audience_whitelist https://graphiti.mcp.nickawilliams.com
+			}
+			rewrite / /mcp
+			rewrite /mcp/ /mcp
+			reverse_proxy graphiti-mcp:8000 {
+				header_up Host localhost:8000
+			}
 		}
 	}
 
 	@mail host mail.mcp.nickawilliams.com
 	handle @mail {
-		@mail-unauth not header Authorization "Bearer {$MCP_TOKEN_MAIL}"
-		respond @mail-unauth "Unauthorized" 401
-		rewrite / /mcp
-		rewrite /mcp/ /mcp
-		reverse_proxy mail-mcp:8080 {
-			header_up Host localhost:8080
+		handle /.well-known/oauth-protected-resource {
+			header Content-Type application/json
+			respond `{"resource":"https://mail.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"]}` 200
+		}
+
+		@mail-bearer header Authorization "Bearer {$MCP_TOKEN_MAIL}"
+		handle @mail-bearer {
+			rewrite / /mcp
+			rewrite /mcp/ /mcp
+			reverse_proxy mail-mcp:8080 {
+				header_up Host localhost:8080
+			}
+		}
+
+		handle {
+			jwtauth {
+				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
+				issuer_whitelist https://auth.nickawilliams.com/
+				audience_whitelist https://mail.mcp.nickawilliams.com
+			}
+			rewrite / /mcp
+			rewrite /mcp/ /mcp
+			reverse_proxy mail-mcp:8080 {
+				header_up Host localhost:8080
+			}
 		}
 	}
 
 	# Unmatched subdomains: no OAuth metadata, just 404.
 	handle {
 		respond "Not Found" 404
+	}
+
+	# RFC 9728: a 401 must point the client at the protected-resource
+	# metadata so it can discover the authorization server. {host} keeps it
+	# correct per service under the wildcard.
+	handle_errors {
+		@unauthorized expression {http.error.status_code} == 401
+		handle @unauthorized {
+			header WWW-Authenticate `Bearer resource_metadata="https://{host}/.well-known/oauth-protected-resource"`
+			respond "Unauthorized" 401
+		}
 	}
 }

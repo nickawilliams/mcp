@@ -57,3 +57,27 @@ resource "aws_ssm_parameter" "account_password" {
   type  = "SecureString"
   value = var.account_passwords[each.key]
 }
+
+# OAuth audience (C4)
+# ==============================================================================
+# MCP clients send this service's URL as the RFC 8707 `resource` param; the
+# identifier must match it exactly (no trailing slash — clients preserve the
+# configured URL verbatim). rfc9068_profile issues standard at+jwt access
+# tokens that Caddy verifies offline via the tenant JWKS. Third-party (DCR)
+# clients always need a client grant even under an allow_all policy, so the
+# default_for grant pre-authorizes every dynamically-registered client for
+# user-delegated access (spike-verified 2026-08-07; see ROADMAP C4).
+
+resource "auth0_resource_server" "service" {
+  name          = "mcp-${local.service.subdomain}"
+  identifier    = "https://${local.service.subdomain}.${var.mcp_domain}"
+  signing_alg   = "RS256"
+  token_dialect = "rfc9068_profile"
+}
+
+resource "auth0_client_grant" "third_party_default" {
+  audience     = auth0_resource_server.service.identifier
+  default_for  = "third_party_clients"
+  subject_type = "user"
+  scopes       = []
+}

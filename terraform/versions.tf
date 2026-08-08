@@ -21,5 +21,10 @@ terraform {
       source  = "jianyuan/openai"
       version = "~> 0.5"
     }
+
+    auth0 = {
+      source  = "auth0/auth0"
+      version = "~> 1.54"
+    }
   }
 }

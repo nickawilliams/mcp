@@ -25,3 +25,13 @@ provider "openai" {}
 provider "onepassword" {
   service_account_token = var.op_service_account_token
 }
+
+# Management API client scoped to resource_servers + client_grants only
+# (op://Infrastructure/auth0-client-mcp-terraform, read as AUTH0_CLIENT_ID /
+# AUTH0_CLIENT_SECRET via .env). Identity is a core concern: the tenant, DCR
+# flag, and auth.nickawilliams.com custom domain live in the infrastructure
+# repo; this repo only registers its per-service audiences against that
+# tenant, whose domain arrives via remote state (same hook as zone_id).
+provider "auth0" {
+  domain = data.terraform_remote_state.common.outputs.auth0_domain
+}
