@@ -77,6 +77,15 @@ deploy:
 		--query "{Status:Status,Stdout:StandardOutputContent,Stderr:StandardErrorContent}" \
 		--output json
 
+# --- Auth0 hygiene -----------------------------------------------------------
+# DCR mints a permanent tpc_* application per client registration; the free
+# plan caps Applications at 10, so interrupted flows accumulate debris that
+# eventually 403s new registrations. See scripts/auth0-gc.sh.
+
+## Delete never-authorized Auth0 DCR client debris (GC=--dry-run to preview)
+gc:
+	op run --env-file=.env -- scripts/auth0-gc.sh $(GC)
+
 # --- Service images ----------------------------------------------------------
 # Upstream publishes no linux/arm64 artifact, so we build and publish our own
 # image of the pinned upstream tag. Registry auth is ambient (docker login

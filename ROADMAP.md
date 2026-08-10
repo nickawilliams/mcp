@@ -148,6 +148,25 @@ does **not** live in this repo — it arrives as an external image dependency
   graphiti); static-bearer path regression-clean. The interim 404 scaffolding
   is removed. Remaining (client-side, not platform): migrate client configs
   to plain URLs and retire the mcp-remote shims.
+- **Provider re-evaluation (2026-08-09)**, triggered by ChatGPT's DCR hitting
+  the free plan's **10-Application entity cap** (each DCR registration mints a
+  permanent `tpc_*` client; interrupted flows leave debris). Alternatives
+  weighed and rejected: WorkOS AuthKit (best MCP feature set, but custom
+  domains — the property that keeps our `auth.nickawilliams.com` issuer
+  portable — are a $99/mo add-on); Keycloak (no RFC 8707 — audience isolation
+  would ride on scope workarounds — and its JVM exceeds the t4g.small's free
+  headroom); other OSS (no credible MCP RFC coverage; all self-host options
+  make us the patch-response team for mail's front door). **Decision: stay on
+  Auth0 free** with (a) `make gc` (scripts/auth0-gc.sh) deleting
+  never-authorized DCR debris — zero user grants + no recent log activity,
+  least-privilege `auth0-client-mcp-gc` credential; (b) CIMD enabled on the
+  tenant (`client_id_metadata_document_supported`, advertised in AS metadata;
+  codify in the infrastructure repo's `auth0_tenant` — provider ≥1.54 has the
+  attribute). CIMD is the MCP spec's SHOULD-level registration mechanism
+  (2025-11-25 revision; DCR demoted to MAY): URL-identified clients register
+  once per deployment, not per machine, so cap pressure decays as clients
+  adopt it. Escape hatches if the cap bites first: Essentials ($35/mo, 100
+  apps), or a provider switch kept cheap by the custom-domain issuer.
 - **Need**: support the OAuth-only clients (claude.ai web connectors for individual
   accounts, ChatGPT) in addition to the header-capable dev tools.
 - **v1 limitation**: a single endpoint can't cleanly serve both — if it advertises
