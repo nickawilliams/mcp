@@ -42,10 +42,13 @@
 		# RFC 9728 protected-resource metadata — unauthenticated by design:
 		# clients read it to find the authorization server before they have
 		# any token. `resource` must equal the terraform identifier exactly
-		# (clients echo it as the RFC 8707 resource param).
+		# (clients echo it as the RFC 8707 resource param). `scopes_supported`
+		# drives the scopes clients request (the MCP SDK copies it into the
+		# authorize scope param) — without offline_access here, clients send
+		# no scope at all and Auth0 never issues a refresh token.
 		handle /.well-known/oauth-protected-resource {
 			header Content-Type application/json
-			respond `{"resource":"https://graphiti.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"]}` 200
+			respond `{"resource":"https://graphiti.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
 		}
 
 		# Machine path: static bearer, validated locally.
@@ -89,7 +92,7 @@
 	handle @mail {
 		handle /.well-known/oauth-protected-resource {
 			header Content-Type application/json
-			respond `{"resource":"https://mail.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"]}` 200
+			respond `{"resource":"https://mail.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
 		}
 
 		@mail-bearer header Authorization "Bearer {$MCP_TOKEN_MAIL}"
