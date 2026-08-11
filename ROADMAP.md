@@ -160,13 +160,27 @@ does **not** live in this repo — it arrives as an external image dependency
   Auth0 free** with (a) `make gc` (scripts/auth0-gc.sh) deleting
   never-authorized DCR debris — zero user grants + no recent log activity,
   least-privilege `auth0-client-mcp-gc` credential; (b) CIMD enabled on the
-  tenant (`client_id_metadata_document_supported`, advertised in AS metadata;
-  codify in the infrastructure repo's `auth0_tenant` — provider ≥1.54 has the
-  attribute). CIMD is the MCP spec's SHOULD-level registration mechanism
-  (2025-11-25 revision; DCR demoted to MAY): URL-identified clients register
-  once per deployment, not per machine, so cap pressure decays as clients
-  adopt it. Escape hatches if the cap bites first: Essentials ($35/mo, 100
-  apps), or a provider switch kept cheap by the custom-domain issuer.
+  tenant (`client_id_metadata_document_supported`, advertised in AS metadata).
+  CIMD is the MCP spec's SHOULD-level registration mechanism (2025-11-25
+  revision; DCR demoted to MAY): URL-identified clients register once per
+  deployment, not per machine, so cap pressure decays as clients adopt it.
+  Escape hatches if the cap bites first: Essentials ($35/mo, 100 apps), or a
+  provider switch kept cheap by the custom-domain issuer.
+- **CIMD correction (2026-08-11)**: Auth0's CIMD is *admin-registered, not
+  just-in-time* — the tenant flag only advertises support; each metadata URL
+  must be registered before `/authorize` accepts it, else
+  `invalid_request: Unknown client: <url>` (which broke Claude Code reauth for
+  ~2 days; CIMD-capable clients prefer CIMD over DCR the moment it is
+  advertised, and fail hard). Registrations are now terraform-managed in the
+  infrastructure repo's identity module (`auth0_client_cimd` per URL, provider
+  ≥1.44; tenant flag codified there too) — onboarding a new CIMD client is a
+  one-line `cimd_clients` entry when its "Unknown client" rejection shows up
+  in tenant logs. Auth0 has API plumbing for client self-registration
+  (`external_metadata_created_by: client`) but no shipped feature yet —
+  revisit if it lands, it would eliminate the per-client entry. Gotcha fixed
+  in the same pass: CIMD clients get `tpc_*` internal ids like DCR debris, so
+  `auth0-gc.sh` now keys on `external_metadata_type == "dcr"` instead of the
+  prefix (a fresh CIMD registration has zero grants and looked collectable).
 - **Need**: support the OAuth-only clients (claude.ai web connectors for individual
   accounts, ChatGPT) in addition to the header-capable dev tools.
 - **v1 limitation**: a single endpoint can't cleanly serve both — if it advertises

@@ -13,8 +13,11 @@
  # registration nothing ever finished. Active clients always hold a
  # grant, so they are never touched; an in-flight registration deleted
  # mid-flow simply re-registers on the client's next attempt (DCR is
- # automatic). CIMD clients are out of scope by construction (their ids
- # are URLs, not tpc_*).
+ # automatic). CIMD registrations also receive tpc_-prefixed client ids
+ # (the metadata URL lives in external_client_id), so the sweep filters
+ # on external_metadata_type == "dcr" — a freshly registered CIMD client
+ # has no grants yet and deleting it would not self-heal (registration
+ # is admin-driven, terraform-managed in ../infrastructure).
  #
  # Credentials: a least-privilege M2M app (read:clients, delete:clients,
  # read:grants, read:logs), resolved from 1Password by the Makefile
@@ -85,11 +88,13 @@ auth0_gc() {
 
   local clients
   clients="$(curl -sS "${auth[@]}" \
-    "${API}/clients?fields=client_id,name&include_fields=true&per_page=100" \
-    | jq -r '.[] | select(.client_id|startswith("tpc_")) | .client_id')"
+    "${API}/clients?fields=client_id,external_metadata_type&include_fields=true&per_page=100" \
+    | jq -r '.[]
+        | select(.external_metadata_type == "dcr")
+        | .client_id')"
 
   if [[ -z "${clients}" ]]; then
-    echo "no tpc_ clients in tenant; nothing to do"
+    echo "no DCR clients in tenant; nothing to do"
     return 0
   fi
 
