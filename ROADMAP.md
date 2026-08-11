@@ -181,6 +181,18 @@ does **not** live in this repo — it arrives as an external image dependency
   in the same pass: CIMD clients get `tpc_*` internal ids like DCR debris, so
   `auth0-gc.sh` now keys on `external_metadata_type == "dcr"` instead of the
   prefix (a fresh CIMD registration has zero grants and looked collectable).
+- **Audience canonicalization split (2026-08-11)**: clients disagree on the
+  RFC 8707 `resource` form for a bare-origin server. claude.ai and ChatGPT
+  send the configured URL verbatim (`https://mail.mcp.nickawilliams.com`,
+  matching the PRM `resource`); Claude Code sends the WHATWG-normalized form
+  with a trailing slash (a JS `URL` of an origin always has path `/`), which
+  the tenant's resource compatibility profile exact-matches against resource
+  server identifiers — so Claude Code failed with
+  `access_denied: Service not found: <url>/`. Identifiers are immutable and
+  the unslashed one has live grants, so each service now registers *both*
+  identifier forms (`service` + `service_slashed` in the mail/graphiti
+  modules) and Caddy whitelists both audiences. Retire the slashed pair if
+  clients ever converge on the verbatim form.
 - **Need**: support the OAuth-only clients (claude.ai web connectors for individual
   accounts, ChatGPT) in addition to the header-capable dev tools.
 - **v1 limitation**: a single endpoint can't cleanly serve both — if it advertises

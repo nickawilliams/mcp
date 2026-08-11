@@ -60,9 +60,14 @@ resource "aws_ssm_parameter" "account_password" {
 
 # OAuth audience (C4)
 # ==============================================================================
-# MCP clients send this service's URL as the RFC 8707 `resource` param; the
-# identifier must match it exactly (no trailing slash — clients preserve the
-# configured URL verbatim). rfc9068_profile issues standard at+jwt access
+# MCP clients send this service's URL as the RFC 8707 `resource` param, and
+# the tenant's compatibility profile maps it to an audience by exact string
+# match — but clients disagree on the canonical form of a bare origin:
+# claude.ai/ChatGPT send the configured URL verbatim (no trailing slash),
+# while Claude Code sends the WHATWG-normalized form (trailing slash; a JS
+# URL of an origin always carries "/" as its path). Identifiers are
+# immutable, so each form is its own resource server; Caddy whitelists both
+# audiences. rfc9068_profile issues standard at+jwt access
 # tokens that Caddy verifies offline via the tenant JWKS. Third-party (DCR)
 # clients always need a client grant even under an allow_all policy, so the
 # default_for grant pre-authorizes every dynamically-registered client for
@@ -75,8 +80,22 @@ resource "auth0_resource_server" "service" {
   token_dialect = "rfc9068_profile"
 }
 
+resource "auth0_resource_server" "service_slashed" {
+  name          = "mcp-${local.service.subdomain}-slashed"
+  identifier    = "https://${local.service.subdomain}.${var.mcp_domain}/"
+  signing_alg   = "RS256"
+  token_dialect = "rfc9068_profile"
+}
+
 resource "auth0_client_grant" "third_party_default" {
   audience     = auth0_resource_server.service.identifier
+  default_for  = "third_party_clients"
+  subject_type = "user"
+  scopes       = []
+}
+
+resource "auth0_client_grant" "third_party_default_slashed" {
+  audience     = auth0_resource_server.service_slashed.identifier
   default_for  = "third_party_clients"
   subject_type = "user"
   scopes       = []

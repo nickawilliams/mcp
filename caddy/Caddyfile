@@ -71,7 +71,11 @@
 			jwtauth {
 				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
 				issuer_whitelist https://auth.nickawilliams.com/
-				audience_whitelist https://graphiti.mcp.nickawilliams.com
+				# Both canonical forms of the bare origin: claude.ai/ChatGPT
+				# request the audience verbatim (no slash), Claude Code sends
+				# the WHATWG-normalized form (trailing slash). One resource
+				# server per form exists in terraform.
+				audience_whitelist https://graphiti.mcp.nickawilliams.com https://graphiti.mcp.nickawilliams.com/
 			}
 			rewrite / /mcp
 			rewrite /mcp/ /mcp
@@ -101,7 +105,8 @@
 			jwtauth {
 				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
 				issuer_whitelist https://auth.nickawilliams.com/
-				audience_whitelist https://mail.mcp.nickawilliams.com
+				# Both canonical forms — see the graphiti block above.
+				audience_whitelist https://mail.mcp.nickawilliams.com https://mail.mcp.nickawilliams.com/
 			}
 			rewrite / /mcp
 			rewrite /mcp/ /mcp
