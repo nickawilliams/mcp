@@ -78,18 +78,25 @@ resource "aws_ssm_parameter" "falkordb_password" {
 # default_for grant pre-authorizes every dynamically-registered client for
 # user-delegated access (spike-verified 2026-08-07; see ROADMAP C4).
 
+# allow_offline_access lets Auth0 honor the offline_access scope and issue
+# refresh tokens; without it every session hard-expires with the 24 h access
+# token and the only recovery is interactive reauth. Renewal cadence is then
+# governed by each client's refresh-token policy (the CIMD client's lives in
+# the infrastructure identity module; DCR clients use tenant defaults).
 resource "auth0_resource_server" "service" {
-  name          = "mcp-${local.service.subdomain}"
-  identifier    = "https://${local.service.subdomain}.${var.mcp_domain}"
-  signing_alg   = "RS256"
-  token_dialect = "rfc9068_profile"
+  name                 = "mcp-${local.service.subdomain}"
+  identifier           = "https://${local.service.subdomain}.${var.mcp_domain}"
+  signing_alg          = "RS256"
+  token_dialect        = "rfc9068_profile"
+  allow_offline_access = true
 }
 
 resource "auth0_resource_server" "service_slashed" {
-  name          = "mcp-${local.service.subdomain}-slashed"
-  identifier    = "https://${local.service.subdomain}.${var.mcp_domain}/"
-  signing_alg   = "RS256"
-  token_dialect = "rfc9068_profile"
+  name                 = "mcp-${local.service.subdomain}-slashed"
+  identifier           = "https://${local.service.subdomain}.${var.mcp_domain}/"
+  signing_alg          = "RS256"
+  token_dialect        = "rfc9068_profile"
+  allow_offline_access = true
 }
 
 resource "auth0_client_grant" "third_party_default" {
