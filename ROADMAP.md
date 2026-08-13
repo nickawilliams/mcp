@@ -82,7 +82,12 @@ does **not** live in this repo — it arrives as an external image dependency
   bodies — the rabbit hole).
 - **Candidate v2 mechanism**: MCP gateway augments/overrides the `instructions`
   field in the initialize response — one directive, delivered to every client and
-  every backend.
+  every backend. Branding rides the same mechanism for free: inject
+  `serverInfo.icons` / `websiteUrl` (SEP-973, spec 2025-11-25) so connectors get
+  per-service icons without upstream support — pointless until clients render
+  the field (claude.ai and Claude Code show a generic globe regardless as of
+  2026-08; claude-ai-mcp#152, claude-code#44675), so check client support at
+  gateway time.
 - **Trigger to build**: bundled with the gateway (C0/hypothesis) — not worth a
   fork on its own.
 - **Caveats**: server instructions are **advisory** — models weight their own
