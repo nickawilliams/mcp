@@ -95,12 +95,25 @@
 			respond `{"resource":"https://mail.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
 		}
 
+		# supergateway answers evicted/unknown MCP sessions with 400 where the
+		# streamable-HTTP spec requires 404 — and only 404 tells clients to
+		# re-initialize, so a 400 wedges the conversation permanently
+		# (claude.ai retries the dead Mcp-Session-Id forever). Translate at
+		# the edge: supergateway's only transport-level 400s are
+		# session-related (JSON-RPC errors ride inside 200s), so the mapping
+		# is safe. graphiti-mcp (FastMCP) is conformant and needs none of
+		# this.
 		@mail-bearer header Authorization "Bearer {$MCP_TOKEN_MAIL}"
 		handle @mail-bearer {
 			rewrite / /mcp
 			rewrite /mcp/ /mcp
 			reverse_proxy mail-mcp:8080 {
 				header_up Host localhost:8080
+				@dead_session status 400
+				handle_response @dead_session {
+					header Content-Type application/json
+					respond `{"jsonrpc":"2.0","error":{"code":-32001,"message":"Session not found"},"id":null}` 404
+				}
 			}
 		}
 
@@ -115,6 +128,12 @@
 			rewrite /mcp/ /mcp
 			reverse_proxy mail-mcp:8080 {
 				header_up Host localhost:8080
+				# Same 400→404 session translation as the bearer path above.
+				@dead_session status 400
+				handle_response @dead_session {
+					header Content-Type application/json
+					respond `{"jsonrpc":"2.0","error":{"code":-32001,"message":"Session not found"},"id":null}` 404
+				}
 			}
 		}
 	}
