@@ -16,6 +16,7 @@ MAIL_MCP_REPO := https://github.com/tecnologicachile/mail-mcp.git
 default: help
 
 .PHONY: default init fmt validate plan apply ssm logs deploy \
+		maintenance/gc maintenance/cimd-pending \
 		publish/mail-mcp help vars _print-var
 
 # --- Terraform ---------------------------------------------------------------
@@ -77,14 +78,19 @@ deploy:
 		--query "{Status:Status,Stdout:StandardOutputContent,Stderr:StandardErrorContent}" \
 		--output json
 
-# --- Auth0 hygiene -----------------------------------------------------------
-# DCR mints a permanent tpc_* application per client registration; the free
-# plan caps Applications at 10, so interrupted flows accumulate debris that
-# eventually 403s new registrations. See scripts/auth0-gc.sh.
+# --- Maintenance -------------------------------------------------------------
+# Auth0 DCR mints a permanent tpc_* app per registration; the free plan caps
+# Applications at 10. maintenance/gc clears debris; maintenance/cimd-pending
+# surfaces CIMD clients blocked because their metadata URL is not yet in
+# terraform. Both use the same least-privilege GC credential (op://-sourced).
 
 ## Delete never-authorized Auth0 DCR client debris (GC=--dry-run to preview)
-gc:
+maintenance/gc:
 	op run --env-file=.env -- scripts/auth0-gc.sh $(GC)
+
+## Report CIMD metadata URLs blocked by Auth0; add each to terraform cimd_clients
+maintenance/cimd-pending:
+	op run --env-file=.env -- scripts/auth0-cimd-pending.sh
 
 # --- Service images ----------------------------------------------------------
 # Upstream publishes no linux/arm64 artifact, so we build and publish our own
