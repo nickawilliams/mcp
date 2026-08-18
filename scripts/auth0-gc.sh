@@ -7,21 +7,33 @@
  # permanent third-party application (client_id `tpc_*`) in the Auth0
  # tenant, and the free plan caps Applications at 10 — interrupted OAuth
  # flows therefore accumulate debris that eventually blocks new client
- # registrations (403 "limit of entities"). This script deletes tpc_
- # clients that have zero user grants (no authorization was ever
- # completed) AND no tenant-log activity in the retention window — a
- # registration nothing ever finished. Active clients always hold a
- # grant, so they are never touched; an in-flight registration deleted
- # mid-flow simply re-registers on the client's next attempt (DCR is
- # automatic). CIMD registrations also receive tpc_-prefixed client ids
- # (the metadata URL lives in external_client_id), so the sweep filters
- # on external_metadata_type == "dcr" — a freshly registered CIMD client
- # has no grants yet and deleting it would not self-heal (registration
- # is admin-driven, terraform-managed in ../infrastructure).
+ # registrations (403 "limit of entities"). This script runs two passes
+ # over all DCR clients:
  #
- # Credentials: a least-privilege M2M app (read:clients, delete:clients,
- # read:grants, read:logs), resolved from 1Password by the Makefile
- # wrapper (`make gc` -> op run --env-file=.env).
+ # Pass 1 — normalize: sets app_type=native on any DCR client whose
+ # callbacks contain only loopback addresses (127.0.0.1 or localhost).
+ # Auth0 requires app_type=native for RFC 8252 port-agnostic loopback
+ # redirect matching; without it, a client that correctly registered
+ # http://127.0.0.1/callback (no port) still fails when it presents a
+ # portful redirect_uri at /authorize. Requires update:clients scope.
+ #
+ # Pass 2 — gc: deletes tpc_* clients that have zero user grants AND no
+ # tenant-log activity in the retention window — a registration nothing
+ # ever finished. Active clients always hold a grant, so they are never
+ # touched; an in-flight registration deleted mid-flow simply re-registers
+ # on the client's next attempt (DCR is automatic). CIMD registrations
+ # also receive tpc_-prefixed client ids (the metadata URL lives in
+ # external_client_id), so the sweep filters on
+ # external_metadata_type == "dcr" — a freshly registered CIMD client has
+ # no grants yet and deleting it would not self-heal (registration is
+ # admin-driven, terraform-managed in ../infrastructure).
+ #
+ # Credentials: a least-privilege M2M app, resolved from 1Password by the
+ # Makefile wrapper (`make maintenance/gc`). Required scopes:
+ #   read:clients, delete:clients, read:grants, read:logs (both passes)
+ #   update:clients (normalize pass)
+ # The app, its grant, and the 1Password item are terraform-managed in
+ # terraform/auth0.tf — widen the scope list there, not in the dashboard.
  ##
 
 set -euo pipefail
@@ -63,16 +75,16 @@ auth0_gc::_token() {
 }
 
 #@/command
- # Delete never-authorized DCR clients (tpc_* with zero grants and no
- # recent log activity).
+ # Normalize loopback DCR clients to app_type=native, then delete
+ # never-authorized DCR client debris.
  #
- # @flag    --dry-run      Report candidates without deleting
+ # @flag    --dry-run      Report candidates without mutating
  #
  # @env     AUTH0_GC_CLIENT_ID      GC app client id (op://-sourced)
  # @env     AUTH0_GC_CLIENT_SECRET  GC app client secret (op://-sourced)
  # @env     AUTH0_GC_DOMAIN         Tenant domain [nickawilliams.us.auth0.com]
  #
- # @stdout                 One line per client examined, kept, or deleted
+ # @stdout                 One line per client examined or mutated
  # @stderr                 Error messages
  #
  # @exit    0              Success (including nothing to do)
@@ -86,20 +98,55 @@ auth0_gc() {
   token="$(auth0_gc::_token)" || return 1
   local -r auth=(-H "Authorization: Bearer ${token}")
 
-  local clients
-  clients="$(curl -sS "${auth[@]}" \
-    "${API}/clients?fields=client_id,external_metadata_type&include_fields=true&per_page=100" \
-    | jq -r '.[]
-        | select(.external_metadata_type == "dcr")
-        | .client_id')"
+  local clients_json
+  clients_json="$(curl -sS "${auth[@]}" \
+    "${API}/clients?fields=client_id,app_type,callbacks,external_metadata_type&include_fields=true&per_page=100" \
+    | jq '[.[] | select(.external_metadata_type == "dcr")]')"
 
-  if [[ -z "${clients}" ]]; then
+  if [[ "$(jq 'length' <<<"${clients_json}")" -eq 0 ]]; then
     echo "no DCR clients in tenant; nothing to do"
     return 0
   fi
 
-  local cid grants logs deleted=0
-  for cid in ${clients}; do
+  # --- Pass 1: normalize app_type=native for loopback-only clients ----------
+  # Auth0 only applies RFC 8252 port-agnostic loopback matching to native
+  # apps. Clients that register http://127.0.0.1/callback (correct, no port)
+  # still fail at /authorize with a portful redirect_uri unless this is set.
+  local normalized=0
+  local cid app_type
+  while IFS=$'\t' read -r cid app_type; do
+    if [[ "${app_type}" == "native" ]]; then
+      continue
+    fi
+    if (( dry_run )); then
+      echo "would-normalize ${cid} (app_type=${app_type:-unset} → native)"
+    else
+      local patch_resp
+      patch_resp="$(curl -sS -w '\n%{http_code}' -X PATCH \
+        "${API}/clients/${cid}" "${auth[@]}" \
+        -H "Content-Type: application/json" \
+        -d '{"app_type":"native"}')"
+      local patch_status
+      patch_status="$(tail -1 <<<"${patch_resp}")"
+      if [[ "${patch_status}" != "200" ]]; then
+        auth0_gc::_err "failed to normalize ${cid} (HTTP ${patch_status})" \
+          "— ensure update:clients scope on GC credential"
+        return 1
+      fi
+      echo "normalize ${cid} (app_type=${app_type:-unset} → native)"
+      normalized=$(( normalized + 1 ))
+    fi
+  done < <(jq -r \
+    '.[] | select(
+       ((.callbacks // []) | length) > 0
+       and ((.callbacks // []) | all(test("^https?://(127\\.0\\.0\\.1|localhost)")))
+     ) | [.client_id, (.app_type // "")] | @tsv' \
+    <<<"${clients_json}")
+
+  # --- Pass 2: delete debris (zero grants + no recent log activity) ----------
+  local deleted=0
+  local grants logs
+  while IFS= read -r cid; do
     grants="$(curl -sS "${auth[@]}" "${API}/grants?client_id=${cid}" \
       | jq 'length')"
     if (( grants > 0 )); then
@@ -125,8 +172,9 @@ auth0_gc() {
       echo "delete ${cid} (no grants, no activity)"
       deleted=$(( deleted + 1 ))
     fi
-  done
-  echo "done: ${deleted} deleted"
+  done < <(jq -r '.[].client_id' <<<"${clients_json}")
+
+  echo "done: ${normalized} normalized, ${deleted} deleted"
 }
 
 auth0_gc "$@"
