@@ -16,7 +16,7 @@ MAIL_MCP_REPO := https://github.com/tecnologicachile/mail-mcp.git
 default: help
 
 .PHONY: default init fmt validate plan apply ssm logs deploy \
-		maintenance/gc maintenance/cimd-pending \
+		maintenance/gc maintenance/cimd-pending maintenance/ebay-token \
 		publish/mail-mcp help vars _print-var
 
 # --- Terraform ---------------------------------------------------------------
@@ -91,6 +91,10 @@ maintenance/gc:
 ## Report CIMD metadata URLs blocked by Auth0; add each to terraform cimd_clients
 maintenance/cimd-pending:
 	op run --env-file=.env -- scripts/auth0-cimd-pending.sh
+
+## Re-mint the eBay user refresh token (browser consent) into 1Password
+maintenance/ebay-token:
+	op run --env-file=.env -- scripts/ebay-user-token.sh
 
 # --- Service images ----------------------------------------------------------
 # Upstream publishes no linux/arm64 artifact, so we build and publish our own

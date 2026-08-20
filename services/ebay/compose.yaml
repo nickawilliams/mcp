@@ -8,10 +8,11 @@
 # may reach the unauthenticated backend.
 #
 # eBay credentials interpolate from the host .env (SSM SecureStrings). The
-# refresh token is minted once, out-of-band, by the package's local setup
-# wizard (`npx ebay-mcp setup`) and seeded via terraform; eBay refresh
-# tokens live ~18 months and don't rotate on use, so expiry is a manual
-# reseed (the server logs "update EBAY_USER_REFRESH_TOKEN" when it dies).
+# refresh token is minted out-of-band via browser consent and seeded through
+# terraform; it lives ~18 months and doesn't rotate on use, so expiry is a
+# manual reseed — `make maintenance/ebay-token`, then apply + deploy (the
+# server logs "update EBAY_USER_REFRESH_TOKEN" when it dies). Full
+# procedure: docs/setup.md.
 services:
   ebay-mcp:
     build:
