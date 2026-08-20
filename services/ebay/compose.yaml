@@ -33,10 +33,18 @@ services:
       - EBAY_CLIENT_SECRET=${EBAY_CLIENT_SECRET}
       - EBAY_USER_REFRESH_TOKEN=${EBAY_USER_REFRESH_TOKEN}
       - EBAY_MARKETPLACE_ID=EBAY_US
-      # Tool surface: `dynamic` exposes discovery tools instead of all 299
-      # (context and memory budget on the t4g.small); switch to `all` or a
-      # comma-separated family list to widen.
-      - EBAY_MCP_TOOLS=dynamic
+      # Tool surface: a frozen family list (~110 of 299 tools; drops the
+      # 83-tool marketing family and the limited-release ones — widen by
+      # name as needed). Not `dynamic`: that mode gates the catalogue
+      # behind enable/disable meta-tools and relies on the client honoring
+      # tools/listChanged to surface what it enables — which Claude Code
+      # (anthropics/claude-code#13646) and the claude.ai connector runtime
+      # do not, leaving enabled tools permanently uncallable there. The
+      # server side is spec-correct (verified end-to-end through Caddy's
+      # SSE path 2026-08-20); Claude clients get their context economy
+      # from client-side deferred tool loading instead, which the full
+      # advertised list composes with fine.
+      - EBAY_MCP_TOOLS=connector,token-management,account,inventory,fulfillment,analytics,browse
       # Global write gate (cf. mail's MAIL_*_WRITE_ENABLED): flip to true to
       # register only read-only tools.
       - EBAY_READ_ONLY=false
