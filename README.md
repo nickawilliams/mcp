@@ -72,9 +72,11 @@ mcp/
 │   └── refresh.sh         # host sync: SSM secrets -> .env, compose reconcile
 ├── services/
 │   └── graphiti/          # one payload directory per MCP service
+│       ├── README.md      #   ops doc (setup, reseed), when comments don't
+│       │                  #   suffice — see services/ebay/README.md
 │       ├── compose.yaml   #   its containers (included by the root compose)
 │       ├── config.yaml    #   its config
-│       └── docs/          #   its docs (client instruction block, etc.)
+│       └── docs/          #   payload docs (client instruction block, etc.)
 ├── terraform/             # root platform module (host, DNS, secrets)
 │   ├── services.tf        #   service manifest: one module block per service
 │   └── modules/
@@ -147,7 +149,11 @@ provider plumbing (checkout, registry login, runners). See `AGENTS.md`.
    basenames must be unique across services (they share the host's `.env`).
 4. Register it: a `module "<name>"` block in `terraform/services.tf` and
    entries in the `services` / `service_tokens` maps in `terraform/locals.tf`.
-5. `make plan && make apply`, then commit + push + `make deploy`.
+5. If the service needs operational documentation beyond file comments
+   (credential setup, token reseeds, upstream quirks), put it in
+   `services/<name>/README.md`. `docs/` is for payload files the service
+   itself consumes or serves, not operator docs.
+6. `make plan && make apply`, then commit + push + `make deploy`.
 
 Removing a service is the inverse: delete both directories and the manifest,
 compose, and Caddyfile entries; the module's resources (token param, DNS)

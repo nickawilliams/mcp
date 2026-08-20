@@ -22,7 +22,7 @@
  # Credentials resolve from 1Password via the Makefile wrapper
  # (`make maintenance/ebay-token`). The write-back uses the shell `op`
  # (desktop-app auth), not the terraform service account. Production
- # only; macOS only (BSD date, `open`). See services/ebay/docs/setup.md.
+ # only; macOS only (BSD date, `open`). See services/ebay/README.md.
  ##
 
 set -euo pipefail

@@ -12,7 +12,7 @@
 # terraform; it lives ~18 months and doesn't rotate on use, so expiry is a
 # manual reseed — `make maintenance/ebay-token`, then apply + deploy (the
 # server logs "update EBAY_USER_REFRESH_TOKEN" when it dies). Full
-# procedure: docs/setup.md.
+# procedure: README.md alongside this file.
 services:
   ebay-mcp:
     build:

@@ -1,4 +1,10 @@
-# ebay — credential setup and token reseed
+# ebay
+
+eBay Sell-API MCP service (YosefHayim/ebay-mcp from npm). This README covers
+what the compose/terraform comments can't: credential setup and the token
+reseed procedure.
+
+## Credentials
 
 The ebay service authenticates to eBay with three credentials, all held on
 the single 1Password item `op://Infrastructure/ebay-client-mcp` and seeded
