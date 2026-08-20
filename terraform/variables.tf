@@ -60,3 +60,25 @@ variable "mail_password_work" {
   type        = string
   sensitive   = true
 }
+
+# eBay developer-app credentials for the ebay service (op://-sourced via .env
+# as TF_VAR_*; same scalar-not-map constraint as the mail passwords). The
+# refresh token comes from the ebay-mcp package's local setup wizard.
+
+variable "ebay_client_id" {
+  description = "eBay developer-app client id (App ID)"
+  type        = string
+  sensitive   = true
+}
+
+variable "ebay_client_secret" {
+  description = "eBay developer-app client secret (Cert ID)"
+  type        = string
+  sensitive   = true
+}
+
+variable "ebay_user_refresh_token" {
+  description = "eBay user OAuth refresh token (~18-month lifetime; reseed on expiry)"
+  type        = string
+  sensitive   = true
+}

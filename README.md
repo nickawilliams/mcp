@@ -3,8 +3,9 @@
 Self-hosted MCP (Model Context Protocol) services, reachable at
 `<service>.mcp.nickawilliams.com`. This repo owns the shared host and every
 service that runs on it. Current services: **graphiti** (long-term-memory
-knowledge graph) and **mail** (multi-account IMAP/SMTP email, the stdio
-upstream wrapped by a supergateway streamable-HTTP bridge).
+knowledge graph), **mail** (multi-account IMAP/SMTP email, the stdio
+upstream wrapped by a supergateway streamable-HTTP bridge), and **ebay**
+(eBay Sell-API tools, a native streamable-HTTP Node server from npm).
 
 ## Architecture
 
@@ -16,8 +17,9 @@ entry in the `services` map.
 ```
 graphiti.mcp.nickawilliams.com --443--> Caddy (auto-TLS + bearer auth)
 mail.mcp.nickawilliams.com     --443-/    -> graphiti-mcp  (:8000 /mcp)
-                                          -> falkordb      (graph DB)
+ebay.mcp.nickawilliams.com     --443-/    -> falkordb      (graph DB)
                                           -> mail-mcp      (:8080 /mcp)
+                                          -> ebay-mcp      (:8081 /)
 ```
 
 Each service lives on its own compose network with only Caddy attached to

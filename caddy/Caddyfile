@@ -138,6 +138,57 @@
 		}
 	}
 
+	@ebay host ebay.mcp.nickawilliams.com
+	handle @ebay {
+		handle /.well-known/oauth-protected-resource {
+			header Content-Type application/json
+			respond `{"resource":"https://ebay.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
+		}
+
+		# ebay-mcp serves its MCP endpoint at / (not /mcp), so no rewrite —
+		# just collapse a stray /mcp back onto the root. Its express app also
+		# skips the SDK's DNS-rebinding guard, so no Host header override is
+		# needed either.
+		#
+		# Like supergateway (see the mail block), ebay-mcp answers
+		# evicted/unknown MCP sessions with 400 where the spec requires 404 —
+		# and only 404 tells clients to re-initialize, so a 400 wedges the
+		# conversation. The blanket 400→404 mapping is slightly coarser here:
+		# the SDK transport can also 400 a malformed body, which would read
+		# back as a dead session — an extra re-initialize, not a wedge.
+		@ebay-bearer header Authorization "Bearer {$MCP_TOKEN_EBAY}"
+		handle @ebay-bearer {
+			rewrite /mcp /
+			rewrite /mcp/ /
+			reverse_proxy ebay-mcp:8081 {
+				@dead_session status 400
+				handle_response @dead_session {
+					header Content-Type application/json
+					respond `{"jsonrpc":"2.0","error":{"code":-32001,"message":"Session not found"},"id":null}` 404
+				}
+			}
+		}
+
+		handle {
+			jwtauth {
+				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
+				issuer_whitelist https://auth.nickawilliams.com/
+				# Both canonical forms — see the graphiti block above.
+				audience_whitelist https://ebay.mcp.nickawilliams.com https://ebay.mcp.nickawilliams.com/
+			}
+			rewrite /mcp /
+			rewrite /mcp/ /
+			reverse_proxy ebay-mcp:8081 {
+				# Same 400→404 session translation as the bearer path above.
+				@dead_session status 400
+				handle_response @dead_session {
+					header Content-Type application/json
+					respond `{"jsonrpc":"2.0","error":{"code":-32001,"message":"Session not found"},"id":null}` 404
+				}
+			}
+		}
+	}
+
 	# Unmatched subdomains: no OAuth metadata, just 404.
 	handle {
 		respond "Not Found" 404

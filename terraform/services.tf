@@ -32,6 +32,19 @@ module "mail" {
   }
 }
 
+module "ebay" {
+  source = "./modules/ebay"
+
+  path_prefix = local.path_prefix
+  mcp_domain  = local.mcp_domain
+  zone_id     = aws_route53_zone.mcp.zone_id
+  host_ip     = aws_eip.host.public_ip
+
+  client_id          = var.ebay_client_id
+  client_secret      = var.ebay_client_secret
+  user_refresh_token = var.ebay_user_refresh_token
+}
+
 # --- State moves from the pre-module layout (2026-07-21) ----------------------
 
 moved {

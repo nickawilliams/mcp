@@ -53,11 +53,13 @@ locals {
   services = {
     graphiti = module.graphiti.service
     mail     = module.mail.service
+    ebay     = module.ebay.service
   }
 
   service_tokens = {
     graphiti = module.graphiti.token
     mail     = module.mail.token
+    ebay     = module.ebay.token
   }
 
   user_data = templatefile("${path.module}/files/cloud-init.sh.tftpl", {

@@ -1,0 +1,52 @@
+# ebay: eBay Sell-API MCP server (YosefHayim/ebay-mcp, from npm). Runs the
+# package's native streamable-HTTP entrypoint (stateful: SDK session map in
+# one long-lived process — no per-session children, cf. mail's
+# supergateway). Included by the root docker-compose.yaml with
+# project_directory rooted at the app dir (/opt/mcp on the host). Only Caddy
+# shares the `ebay` network — inbound auth terminates at the vhost
+# (OAUTH_ENABLED=false disables the server's own verifier), so nothing else
+# may reach the unauthenticated backend.
+#
+# eBay credentials interpolate from the host .env (SSM SecureStrings). The
+# refresh token is minted once, out-of-band, by the package's local setup
+# wizard (`npx ebay-mcp setup`) and seeded via terraform; eBay refresh
+# tokens live ~18 months and don't rotate on use, so expiry is a manual
+# reseed (the server logs "update EBAY_USER_REFRESH_TOKEN" when it dies).
+services:
+  ebay-mcp:
+    build:
+      context: ./services/ebay
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    networks:
+      - ebay
+    environment:
+      # Transport: bind beyond loopback (default is localhost, unreachable
+      # from Caddy's network) and skip the built-in OAuth verifier.
+      - MCP_HOST=0.0.0.0
+      - MCP_PORT=8081
+      - OAUTH_ENABLED=false
+      # eBay app + user credentials (SSM-sourced)
+      - EBAY_ENVIRONMENT=production
+      - EBAY_CLIENT_ID=${EBAY_CLIENT_ID}
+      - EBAY_CLIENT_SECRET=${EBAY_CLIENT_SECRET}
+      - EBAY_USER_REFRESH_TOKEN=${EBAY_USER_REFRESH_TOKEN}
+      - EBAY_MARKETPLACE_ID=EBAY_US
+      # Tool surface: `dynamic` exposes discovery tools instead of all 299
+      # (context and memory budget on the t4g.small); switch to `all` or a
+      # comma-separated family list to widen.
+      - EBAY_MCP_TOOLS=dynamic
+      # Global write gate (cf. mail's MAIL_*_WRITE_ENABLED): flip to true to
+      # register only read-only tools.
+      - EBAY_READ_ONLY=false
+    ports:
+      - "127.0.0.1:8081:8081" # debug via SSM tunnel only (8000/8080 taken)
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8081/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+networks:
+  ebay: {}
