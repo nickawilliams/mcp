@@ -46,9 +46,20 @@
 		# drives the scopes clients request (the MCP SDK copies it into the
 		# authorize scope param) — without offline_access here, clients send
 		# no scope at all and Auth0 never issues a refresh token.
+		#
+		# The trailing slash on `resource` is deliberate and load-bearing.
+		# Claude Code parses the server URL with the WHATWG URL API, where a
+		# bare origin always carries "/" as its path, so it requests the
+		# slashed audience however it is configured. claude.ai takes the
+		# audience from THIS FIELD rather than from its connector URL —
+		# proven 2026-08-22 by flipping it on ebay alone and watching
+		# claude.ai's next authorization follow, connector URL unchanged.
+		# The slashed form is therefore the one value both client families
+		# agree on, which is what lets each service run a single Auth0
+		# resource server instead of one per form.
 		handle /.well-known/oauth-protected-resource {
 			header Content-Type application/json
-			respond `{"resource":"https://graphiti.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
+			respond `{"resource":"https://graphiti.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
 		}
 
 		# Machine path: static bearer, validated locally.
@@ -74,11 +85,14 @@
 			jwtauth {
 				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
 				issuer_whitelist https://auth.nickawilliams.com/
-				# Both canonical forms of the bare origin: claude.ai/ChatGPT
-				# request the audience verbatim (no slash), Claude Code sends
-				# the WHATWG-normalized form (trailing slash). One resource
-				# server per form exists in terraform.
-				audience_whitelist https://graphiti.mcp.nickawilliams.com https://graphiti.mcp.nickawilliams.com/
+				# One canonical audience — see the metadata block above for
+				# why it carries the trailing slash. Deliberately does NOT
+				# also accept the bare form: a client holding a stale
+				# bare-audience token would keep using it instead of
+				# re-reading the metadata, since nothing would ever 401.
+				# That is precisely what stalled this migration until the
+				# bare form was withdrawn.
+				audience_whitelist https://graphiti.mcp.nickawilliams.com/
 			}
 			rewrite / /mcp
 			rewrite /mcp/ /mcp
@@ -92,7 +106,7 @@
 	handle @mail {
 		handle /.well-known/oauth-protected-resource {
 			header Content-Type application/json
-			respond `{"resource":"https://mail.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
+			respond `{"resource":"https://mail.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
 		}
 
 		# No 400→404 session translation here (cf. the ebay block): the mail
@@ -117,8 +131,8 @@
 			jwtauth {
 				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
 				issuer_whitelist https://auth.nickawilliams.com/
-				# Both canonical forms — see the graphiti block above.
-				audience_whitelist https://mail.mcp.nickawilliams.com https://mail.mcp.nickawilliams.com/
+				# One canonical audience — see the graphiti block above.
+				audience_whitelist https://mail.mcp.nickawilliams.com/
 			}
 			rewrite / /mcp
 			rewrite /mcp/ /mcp
@@ -130,23 +144,10 @@
 
 	@ebay host ebay.mcp.nickawilliams.com
 	handle @ebay {
-		# TEMPORARY (2026-08-22): `resource` carries the trailing slash here
-		# and nowhere else — a deliberate probe, not drift. Claude Code always
-		# requests the WHATWG-normalized (slashed) audience while
-		# claude.ai/ChatGPT request the bare form, which is the only reason
-		# every service carries two resource servers. Open question: does
-		# claude.ai take its audience from this field, or from its own
-		# configured connector URL? Read the next token exchange: a slashed
-		# audience means this field drives it, graphiti and mail can follow,
-		# and six resource servers collapse to three. A bare one means the
-		# client config drives it — revert this block and converge by putting
-		# the slash in each connector URL instead.
-		#
-		# Re-adding the connector is NOT enough to trigger this: claude.ai
-		# rehydrates its stored grant for the same URL and never re-reads the
-		# metadata. audience_whitelist below is narrowed to the slashed form
-		# for the same reason — a cached bare-audience token has to start
-		# failing before the client will re-discover. Revert both together.
+		# Trailing slash on `resource` — see the graphiti block above. This
+		# is where that was proven: flipping it here alone, with the
+		# claude.ai connector URL left unchanged, moved claude.ai's next
+		# authorization onto the slashed audience.
 		handle /.well-known/oauth-protected-resource {
 			header Content-Type application/json
 			respond `{"resource":"https://ebay.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
@@ -180,15 +181,7 @@
 			jwtauth {
 				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
 				issuer_whitelist https://auth.nickawilliams.com/
-				# TEMPORARY (2026-08-22): slashed form only, paired with the
-				# probe in the metadata block above. Accepting both forms let
-				# claude.ai keep using its cached bare-audience token, so
-				# nothing ever 401'd and the client never re-read the
-				# metadata — the probe could not fire. Dropping the bare form
-				# makes that token fail, and handle_errors below answers with
-				# the RFC 9728 discovery pointer, which is what drives a
-				# re-authorization. Restore the bare form together with the
-				# metadata block if the probe comes back bare.
+				# One canonical audience — see the graphiti block above.
 				audience_whitelist https://ebay.mcp.nickawilliams.com/
 			}
 			rewrite /mcp /
