@@ -6,3 +6,10 @@ FROM ghcr.io/nickawilliams/mail-mcp:v0.4.9@sha256:35867f74795f578023bfcb88b7fdb5
 
 FROM supercorp/supergateway:3.4.3
 COPY --from=mail /mail-imap-mcp-rs /usr/local/bin/mail-imap-mcp-rs
+
+# The bridge runs stateless (see compose.yaml), which upstream ships with a
+# per-request child-process leak. patch-supergateway.js fixes it at build
+# time and fails the build if the upstream anchor moves, so an unpatched
+# image cannot ship silently. Remove both lines once fixed upstream.
+COPY patch-supergateway.js /tmp/patch-supergateway.js
+RUN node /tmp/patch-supergateway.js && rm /tmp/patch-supergateway.js

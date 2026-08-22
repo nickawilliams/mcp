@@ -95,25 +95,21 @@
 			respond `{"resource":"https://mail.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
 		}
 
-		# supergateway answers evicted/unknown MCP sessions with 400 where the
-		# streamable-HTTP spec requires 404 — and only 404 tells clients to
-		# re-initialize, so a 400 wedges the conversation permanently
-		# (claude.ai retries the dead Mcp-Session-Id forever). Translate at
-		# the edge: supergateway's only transport-level 400s are
-		# session-related (JSON-RPC errors ride inside 200s), so the mapping
-		# is safe. graphiti-mcp (FastMCP) is conformant and needs none of
-		# this.
+		# No 400→404 session translation here (cf. the ebay block): the mail
+		# bridge runs stateless, so it issues no Mcp-Session-Id and has no
+		# session that can be evicted. Its transport-level 400s are now only
+		# genuinely malformed requests, and reporting those as "session not
+		# found" would send clients into a pointless re-initialize.
+		#
+		# Stateless also means GET returns 405 (the spec's answer when a
+		# server offers no SSE stream); clients must fall back to POST-only,
+		# which is what the claude.ai connector already does.
 		@mail-bearer header Authorization "Bearer {$MCP_TOKEN_MAIL}"
 		handle @mail-bearer {
 			rewrite / /mcp
 			rewrite /mcp/ /mcp
 			reverse_proxy mail-mcp:8080 {
 				header_up Host localhost:8080
-				@dead_session status 400
-				handle_response @dead_session {
-					header Content-Type application/json
-					respond `{"jsonrpc":"2.0","error":{"code":-32001,"message":"Session not found"},"id":null}` 404
-				}
 			}
 		}
 
@@ -128,21 +124,28 @@
 			rewrite /mcp/ /mcp
 			reverse_proxy mail-mcp:8080 {
 				header_up Host localhost:8080
-				# Same 400→404 session translation as the bearer path above.
-				@dead_session status 400
-				handle_response @dead_session {
-					header Content-Type application/json
-					respond `{"jsonrpc":"2.0","error":{"code":-32001,"message":"Session not found"},"id":null}` 404
-				}
 			}
 		}
 	}
 
 	@ebay host ebay.mcp.nickawilliams.com
 	handle @ebay {
+		# TEMPORARY (2026-08-22): `resource` carries the trailing slash here
+		# and nowhere else — a deliberate probe, not drift. Claude Code always
+		# requests the WHATWG-normalized (slashed) audience while
+		# claude.ai/ChatGPT request the bare form, which is the only reason
+		# every service carries two resource servers. Open question: does
+		# claude.ai take its audience from this field, or from its own
+		# configured connector URL? Re-add the ebay connector in claude.ai
+		# (a cached token skips discovery) and read the next token exchange:
+		# a slashed audience means this field drives it, graphiti and mail
+		# can follow, and six resource servers collapse to three. A bare one
+		# means the client config drives it — revert this line and converge
+		# by putting the slash in each connector URL instead. Safe either
+		# way: audience_whitelist below still accepts both forms.
 		handle /.well-known/oauth-protected-resource {
 			header Content-Type application/json
-			respond `{"resource":"https://ebay.mcp.nickawilliams.com","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
+			respond `{"resource":"https://ebay.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
 		}
 
 		# ebay-mcp serves its MCP endpoint at / (not /mcp), so no rewrite —

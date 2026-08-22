@@ -1,7 +1,25 @@
 # mail: multi-account IMAP/SMTP MCP server (tecnologicachile/mail-mcp). The
 # upstream binary is stdio-only; supergateway wraps it in-container and
-# serves streamable HTTP on :8080 (stateful: one stdio child per MCP
-# session, reaped after 10 min idle; the child inherits this environment).
+# serves streamable HTTP on :8080. The bridge runs STATELESS — no MCP
+# session ids are issued, and each request gets its own short-lived stdio
+# child (which inherits this environment).
+#
+# Stateless is deliberate. Under --stateful the bridge reaped idle sessions
+# after --sessionTimeout and SIGTERMed their child; because clients that
+# hold no GET/SSE stream (the claude.ai connector sends POSTs only) drop the
+# session access count to zero after every response, the timer restarted
+# from each tool call and killed the session 10 minutes after the last one —
+# mid-conversation, whenever a draft took longer than that. The client's
+# recovery from the resulting 404 is unreliable, and reconnecting only
+# relit the same fuse. mail-mcp needs none of what a session buys: it
+# declares tools-only capabilities (so it never initiates a message to the
+# client), its accounts come from this environment, and its message ids are
+# IMAP UIDVALIDITY/UID (verified identical across separate child
+# processes). Removing the session removes the failure mode outright.
+#
+# --protocolVersion pins the gateway->child handshake to what mail-mcp
+# actually speaks; stateless auto-initializes each child, and the default
+# (2024-11-05) is older than the server's 2025-03-26.
 # Included by the root docker-compose.yaml with project_directory rooted at
 # the app dir (/opt/mcp on the host), so relative paths here are from that
 # root, NOT from this file's directory. Only Caddy shares the `mail`
@@ -23,11 +41,10 @@ services:
       [
         "--stdio", "/usr/local/bin/mail-imap-mcp-rs",
         "--outputTransport", "streamableHttp",
-        "--stateful",
         "--port", "8080",
         "--streamableHttpPath", "/mcp",
         "--healthEndpoint", "/healthz",
-        "--sessionTimeout", "600000",
+        "--protocolVersion", "2025-03-26",
         "--logLevel", "info",
       ]
     environment:
