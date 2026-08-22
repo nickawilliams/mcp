@@ -136,13 +136,17 @@
 		# claude.ai/ChatGPT request the bare form, which is the only reason
 		# every service carries two resource servers. Open question: does
 		# claude.ai take its audience from this field, or from its own
-		# configured connector URL? Re-add the ebay connector in claude.ai
-		# (a cached token skips discovery) and read the next token exchange:
-		# a slashed audience means this field drives it, graphiti and mail
-		# can follow, and six resource servers collapse to three. A bare one
-		# means the client config drives it — revert this line and converge
-		# by putting the slash in each connector URL instead. Safe either
-		# way: audience_whitelist below still accepts both forms.
+		# configured connector URL? Read the next token exchange: a slashed
+		# audience means this field drives it, graphiti and mail can follow,
+		# and six resource servers collapse to three. A bare one means the
+		# client config drives it — revert this block and converge by putting
+		# the slash in each connector URL instead.
+		#
+		# Re-adding the connector is NOT enough to trigger this: claude.ai
+		# rehydrates its stored grant for the same URL and never re-reads the
+		# metadata. audience_whitelist below is narrowed to the slashed form
+		# for the same reason — a cached bare-audience token has to start
+		# failing before the client will re-discover. Revert both together.
 		handle /.well-known/oauth-protected-resource {
 			header Content-Type application/json
 			respond `{"resource":"https://ebay.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
@@ -176,8 +180,16 @@
 			jwtauth {
 				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
 				issuer_whitelist https://auth.nickawilliams.com/
-				# Both canonical forms — see the graphiti block above.
-				audience_whitelist https://ebay.mcp.nickawilliams.com https://ebay.mcp.nickawilliams.com/
+				# TEMPORARY (2026-08-22): slashed form only, paired with the
+				# probe in the metadata block above. Accepting both forms let
+				# claude.ai keep using its cached bare-audience token, so
+				# nothing ever 401'd and the client never re-read the
+				# metadata — the probe could not fire. Dropping the bare form
+				# makes that token fail, and handle_errors below answers with
+				# the RFC 9728 discovery pointer, which is what drives a
+				# re-authorization. Restore the bare form together with the
+				# metadata block if the probe comes back bare.
+				audience_whitelist https://ebay.mcp.nickawilliams.com/
 			}
 			rewrite /mcp /
 			rewrite /mcp/ /
