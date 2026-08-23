@@ -15,7 +15,7 @@ MAIL_MCP_REPO := https://github.com/tecnologicachile/mail-mcp.git
 
 # ebay-mcp normally ships prebuilt from npm; these drive publish/ebay-mcp,
 # which exists only while the service tracks an unreleased fork branch.
-EBAY_MCP_VERSION ?= 1.15.0-browse.3
+EBAY_MCP_VERSION ?= 1.15.0-browse.4
 EBAY_MCP_IMAGE := ghcr.io/nickawilliams/ebay-mcp
 EBAY_MCP_REPO := https://github.com/nickawilliams/ebay-mcp.git
 EBAY_MCP_REF ?= feat/browse-item-search
