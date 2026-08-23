@@ -17,14 +17,24 @@ FROM node:22-alpine AS build
 
 ARG EBAY_MCP_REPO=https://github.com/nickawilliams/ebay-mcp.git
 ARG EBAY_MCP_REF=feat/browse-item-search
+# Commit the ref pointed at when the build was launched. Load-bearing for
+# correctness, not just provenance: `RUN git clone` is cached on the command
+# string alone, so without a value that changes when the branch moves, buildx
+# happily reuses the previous clone and silently republishes stale code under
+# a new tag. publish/ebay-mcp resolves this with git ls-remote.
+ARG EBAY_MCP_REV=unpinned
 
 RUN apk add --no-cache git
 WORKDIR /src
 
 # --depth 1 on an explicit ref: the image is pinned by digest downstream, so
 # reproducibility comes from the digest, not from carrying the history.
-RUN git clone --depth 1 --branch "${EBAY_MCP_REF}" "${EBAY_MCP_REPO}" . \
-  && git rev-parse HEAD > /src/.build-revision
+RUN echo "building ${EBAY_MCP_REF} @ ${EBAY_MCP_REV}" \
+  && git clone --depth 1 --branch "${EBAY_MCP_REF}" "${EBAY_MCP_REPO}" . \
+  && git rev-parse HEAD > /src/.build-revision \
+  && if [ "${EBAY_MCP_REV}" != "unpinned" ] && [ "$(cat /src/.build-revision)" != "${EBAY_MCP_REV}" ]; then \
+       echo "clone is $(cat /src/.build-revision), expected ${EBAY_MCP_REV}" >&2; exit 1; \
+     fi
 
 # corepack honours the packageManager pin in package.json. pnpm (not npm) is
 # required: the repo's supply-chain test fails on a package-lock.json.

@@ -10,4 +10,4 @@
 # has ~600 MB free and no swap; a tsc pass over that project would OOM it), and
 # pinned here by digest. Rebuild + re-pin after every push to the branch —
 # unlike an npm version bump, the tag is mutable upstream of this pin.
-FROM ghcr.io/nickawilliams/ebay-mcp:1.15.0-browse.2@sha256:21ae489a402e4cd7e3bda080e13d0b622f8d77a41070e109adc81faf83d27696
+FROM ghcr.io/nickawilliams/ebay-mcp:1.15.0-browse.3@sha256:56897da88aeccd205d07fe2652b12d9a4f550eb916ad093cf19992100415246e
