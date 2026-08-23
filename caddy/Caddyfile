@@ -14,7 +14,6 @@
 #     tenant), verified offline against its JWKS — no per-request calls to
 #     the IdP. Audience = the service URL (matches each service's
 #     auth0_resource_server identifier in terraform).
-
 {
 	# jwtauth (ggicci/caddy-jwt, built into Dockerfile.caddy) is an auth
 	# handler; slot it where basicauth would run.
