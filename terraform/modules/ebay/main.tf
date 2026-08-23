@@ -68,21 +68,13 @@ resource "aws_ssm_parameter" "user_refresh_token" {
 
 # OAuth audience (C4)
 # ==============================================================================
-# Two resource servers per service — clients disagree on the canonical form
-# of a bare origin (with/without trailing slash) and identifiers are
-# immutable; Caddy whitelists both audiences. See modules/mail/main.tf for
-# the full rationale (rfc9068_profile, offline_access, default_for grants).
+# One resource server per service, keyed on the trailing-slash form of the
+# origin — the single audience every client family agrees on, proven here on
+# 2026-08-22 (see caddy/Caddyfile). See modules/mail/main.tf for the full
+# rationale (rfc9068_profile, offline_access, default_for grants).
 
 resource "auth0_resource_server" "service" {
   name                 = "mcp-${local.service.subdomain}"
-  identifier           = "https://${local.service.subdomain}.${var.mcp_domain}"
-  signing_alg          = "RS256"
-  token_dialect        = "rfc9068_profile"
-  allow_offline_access = true
-}
-
-resource "auth0_resource_server" "service_slashed" {
-  name                 = "mcp-${local.service.subdomain}-slashed"
   identifier           = "https://${local.service.subdomain}.${var.mcp_domain}/"
   signing_alg          = "RS256"
   token_dialect        = "rfc9068_profile"
@@ -91,13 +83,6 @@ resource "auth0_resource_server" "service_slashed" {
 
 resource "auth0_client_grant" "third_party_default" {
   audience     = auth0_resource_server.service.identifier
-  default_for  = "third_party_clients"
-  subject_type = "user"
-  scopes       = []
-}
-
-resource "auth0_client_grant" "third_party_default_slashed" {
-  audience     = auth0_resource_server.service_slashed.identifier
   default_for  = "third_party_clients"
   subject_type = "user"
   scopes       = []

@@ -67,14 +67,17 @@ resource "aws_ssm_parameter" "falkordb_password" {
 # ==============================================================================
 # MCP clients send this service's URL as the RFC 8707 `resource` param, and
 # the tenant's compatibility profile maps it to an audience by exact string
-# match — but clients disagree on the canonical form of a bare origin:
-# claude.ai/ChatGPT send the configured URL verbatim (no trailing slash),
-# while Claude Code sends the WHATWG-normalized form (trailing slash; a JS
-# URL of an origin always carries "/" as its path). Identifiers are
-# immutable, so each form is its own resource server; Caddy whitelists both
-# audiences. rfc9068_profile issues standard at+jwt access
-# tokens that Caddy verifies offline via the tenant JWKS. Third-party (DCR)
-# clients always need a client grant even under an allow_all policy, so the
+# match, so the identifier below must be byte-identical to what clients ask
+# for. The trailing slash is what makes that a single string rather than
+# two: Claude Code parses the URL with the WHATWG URL API, where a bare
+# origin always carries "/" as its path, so it requests the slashed form
+# however it is configured; claude.ai takes the audience from the RFC 9728
+# metadata document Caddy serves, so pointing that at the slashed form moves
+# it too (proven 2026-08-22 on ebay — see caddy/Caddyfile). Before that each
+# service ran one resource server per form, costing two of the free plan's
+# ten. rfc9068_profile issues standard at+jwt access tokens that Caddy
+# verifies offline via the tenant JWKS. Third-party (DCR and CIMD) clients
+# always need a client grant even under an allow_all policy, so the
 # default_for grant pre-authorizes every dynamically-registered client for
 # user-delegated access (spike-verified 2026-08-07; see ROADMAP C4).
 
@@ -85,14 +88,6 @@ resource "aws_ssm_parameter" "falkordb_password" {
 # the infrastructure identity module; DCR clients use tenant defaults).
 resource "auth0_resource_server" "service" {
   name                 = "mcp-${local.service.subdomain}"
-  identifier           = "https://${local.service.subdomain}.${var.mcp_domain}"
-  signing_alg          = "RS256"
-  token_dialect        = "rfc9068_profile"
-  allow_offline_access = true
-}
-
-resource "auth0_resource_server" "service_slashed" {
-  name                 = "mcp-${local.service.subdomain}-slashed"
   identifier           = "https://${local.service.subdomain}.${var.mcp_domain}/"
   signing_alg          = "RS256"
   token_dialect        = "rfc9068_profile"
@@ -101,13 +96,6 @@ resource "auth0_resource_server" "service_slashed" {
 
 resource "auth0_client_grant" "third_party_default" {
   audience     = auth0_resource_server.service.identifier
-  default_for  = "third_party_clients"
-  subject_type = "user"
-  scopes       = []
-}
-
-resource "auth0_client_grant" "third_party_default_slashed" {
-  audience     = auth0_resource_server.service_slashed.identifier
   default_for  = "third_party_clients"
   subject_type = "user"
   scopes       = []
