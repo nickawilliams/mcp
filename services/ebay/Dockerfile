@@ -1,14 +1,13 @@
-# ebay-mcp (YosefHayim/ebay-mcp): TypeScript MCP server for eBay's Sell
-# APIs, published to npm. Pure JS — no arm64 publish pipeline needed (cf.
-# services/mail); the image is assembly only: pinned runtime + pinned
-# package. Node 22 (LTS): the package needs >=20, but 20 hit EOL 2026-04.
-# The HTTP entrypoint (build/serverHttp.js) is a native streamable-HTTP
-# server, so no supergateway bridge either. It persists refreshed eBay
-# tokens to the package root's .env (best-effort — failures degrade to
-# in-memory, and the durable refresh token is env-seeded from SSM), so the
-# write lands in the ephemeral container layer by design.
-FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32
-
-RUN npm install -g ebay-mcp@1.15.0
-
-CMD ["node", "/usr/local/lib/node_modules/ebay-mcp/build/serverHttp.js"]
+# TEMPORARY: tracking an unreleased fork branch, not a published npm release.
+#
+# The service normally installs ebay-mcp from npm (see the git history for the
+# one-line form, and restore it once the branch lands upstream). It currently
+# runs a build of nickawilliams/ebay-mcp@feat/browse-item-search, which adds
+# Buy Browse active-listing search — the upstream package is Sell-only, so
+# there is no marketplace search without it.
+#
+# The image is built and pushed off-box by `make publish/ebay-mcp` (the host
+# has ~600 MB free and no swap; a tsc pass over that project would OOM it), and
+# pinned here by digest. Rebuild + re-pin after every push to the branch —
+# unlike an npm version bump, the tag is mutable upstream of this pin.
+FROM ghcr.io/nickawilliams/ebay-mcp:1.15.0-browse.1@sha256:020d6cac07387ef075daa0a9be1075be69a4d6f10754e021f82db30422ef0533

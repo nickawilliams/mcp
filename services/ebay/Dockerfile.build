@@ -1,0 +1,52 @@
+# Build recipe for the ebay-mcp image published to GHCR by
+# `make publish/ebay-mcp`. It is NOT the image the host runs — see
+# Dockerfile, which consumes the published result by digest.
+#
+# Why this exists: the upstream package ships on npm prebuilt, so the host
+# normally installs a released version and never compiles anything. To run an
+# unreleased branch (a fork carrying changes not yet upstreamed) the TypeScript
+# has to be compiled, and the MCP host is a t4g.small with ~600 MB free and no
+# swap — a tsc pass over this project would OOM it and take the neighbouring
+# services down. So the compile happens off-box, on an arm64 workstation or CI
+# runner, exactly like publish/mail-mcp.
+#
+# The clone happens inside the build so no context is needed; pass --build-arg
+# EBAY_MCP_REF=<branch|tag|sha> to pin a different revision.
+
+FROM node:22-alpine AS build
+
+ARG EBAY_MCP_REPO=https://github.com/nickawilliams/ebay-mcp.git
+ARG EBAY_MCP_REF=feat/browse-item-search
+
+RUN apk add --no-cache git
+WORKDIR /src
+
+# --depth 1 on an explicit ref: the image is pinned by digest downstream, so
+# reproducibility comes from the digest, not from carrying the history.
+RUN git clone --depth 1 --branch "${EBAY_MCP_REF}" "${EBAY_MCP_REPO}" . \
+  && git rev-parse HEAD > /src/.build-revision
+
+# corepack honours the packageManager pin in package.json. pnpm (not npm) is
+# required: the repo's supply-chain test fails on a package-lock.json.
+#
+# --ignore-scripts is load-bearing: the package's `prepare` hook runs
+# `npm run build && husky` partway through install, before devDependencies are
+# on PATH, so tsc is missing and the install dies. Skipping lifecycle scripts
+# defers the compile to the explicit `pnpm build` below (and skips husky, which
+# has nothing to hook in a container). The prune needs the same flag for the
+# same reason: it drops devDependencies and then re-fires `prepare`, which
+# would rebuild with tsc already removed.
+RUN corepack enable \
+  && pnpm install --frozen-lockfile --ignore-scripts \
+  && pnpm build \
+  && pnpm prune --prod --ignore-scripts
+
+FROM node:22-alpine
+
+# The whole built tree, not just build/: the OAuth scope tables resolve at
+# ../../docs/auth relative to build/config, and the MCP Apps views are read
+# from the built ui/ assets.
+WORKDIR /app
+COPY --from=build /src /app
+
+CMD ["node", "/app/build/serverHttp.js"]

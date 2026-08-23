@@ -13,11 +13,17 @@ MAIL_MCP_VERSION ?= v0.4.9
 MAIL_MCP_IMAGE := ghcr.io/nickawilliams/mail-mcp
 MAIL_MCP_REPO := https://github.com/tecnologicachile/mail-mcp.git
 
+# ebay-mcp normally ships prebuilt from npm; these drive publish/ebay-mcp,
+# which exists only while the service tracks an unreleased fork branch.
+EBAY_MCP_VERSION ?= 1.15.0-browse.1
+EBAY_MCP_IMAGE := ghcr.io/nickawilliams/ebay-mcp
+EBAY_MCP_REF ?= feat/browse-item-search
+
 default: help
 
 .PHONY: default init fmt validate plan apply ssm logs deploy \
 		maintenance/gc maintenance/cimd-pending maintenance/ebay-token \
-		publish/mail-mcp help vars _print-var
+		publish/mail-mcp publish/ebay-mcp help vars _print-var
 
 # --- Terraform ---------------------------------------------------------------
 
@@ -123,6 +129,26 @@ publish/mail-mcp:
 	echo ""; \
 	echo "Published $(MAIL_MCP_IMAGE):$(MAIL_MCP_VERSION). Digest for pinning:"; \
 	docker buildx imagetools inspect "$(MAIL_MCP_IMAGE):$(MAIL_MCP_VERSION)" \
+		--format '{{.Manifest.Digest}}'
+
+# ebay-mcp: unlike mail-mcp this is not an upstream-artifact gap — npm ships a
+# working arm64-capable package. This target exists only to run an unreleased
+# fork branch, whose TypeScript must be compiled somewhere with more headroom
+# than the t4g.small host. Retire it (and services/ebay/Dockerfile.build) once
+# the branch lands upstream and the service can pin a released npm version.
+
+## Build + push the ebay-mcp linux/arm64 image from the tracked fork branch
+publish/ebay-mcp:
+	@set -euo pipefail; \
+	echo "Building $(EBAY_MCP_IMAGE):$(EBAY_MCP_VERSION) from $(EBAY_MCP_REF)..."; \
+	docker buildx build --platform linux/arm64 \
+		--file services/ebay/Dockerfile.build \
+		--build-arg "EBAY_MCP_REF=$(EBAY_MCP_REF)" \
+		--tag "$(EBAY_MCP_IMAGE):$(EBAY_MCP_VERSION)" --push \
+		services/ebay; \
+	echo ""; \
+	echo "Published $(EBAY_MCP_IMAGE):$(EBAY_MCP_VERSION). Digest for pinning:"; \
+	docker buildx imagetools inspect "$(EBAY_MCP_IMAGE):$(EBAY_MCP_VERSION)" \
 		--format '{{.Manifest.Digest}}'
 
 # --- Utils -------------------------------------------------------------------
