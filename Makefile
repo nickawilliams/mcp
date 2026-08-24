@@ -195,8 +195,8 @@ publish/ebay-mcp:
 ICON_GLYPH := logo.svg
 ICON_OUT ?= caddy/icons
 ICON_IMAGE := mcp-icon:local
-# Empty defers to the generator's own LADDER (512/192/180/48/32/16), which is
-# the design's single source of truth and already carries the 16/32/48 that
+# Empty defers to the LADDER in the generator (512/192/180/48/32/16), which is
+# the single source of truth for the set and already carries the 16/32/48 that
 # --ico packs. Set a comma-separated list only to override it for a one-off.
 ICON_SIZES ?=
 # Narrow a run to one service: make icons ICON_SERVICE=graphiti. nullglob

@@ -9,24 +9,19 @@
 // PNG ladder — @resvg/resvg-js (pinned in package.json) or sharp. SVG-only
 // output (--no-png) runs with zero dependencies.
 //
-// Provenance: consolidated from the Claude Design session's mcp-icon.mjs +
-// mcp-icon-gen.js + glyphs/glyphs.js. Four deliberate departures from those:
+// A tile is three layers: a rounded plate carrying a two-stop gradient derived
+// from the service's brand colour, the MCP mark blended over it as a
+// watermark, and the service glyph knocked out in near-white on top. The brand
+// colour is sniffed out of the glyph file — everything else is fixed here, so
+// every service's icon sits in the same family whatever its mark looks like.
 //
-//   1. One file, no exports. Nothing imports this; it is only ever a CLI.
-//   2. No browser support. The upstream generator carried DOM/canvas versions
-//      of parseGlyphSVG, measureGlyph and toPNG for a browser playground, all
-//      of which the CLI already shadowed with Node implementations. Gone.
-//   3. No 'matte' variant. Under resvg — the only rasteriser this repo renders
-//      with — matte's MCP mark sits at opacity 0.15 and all but disappears,
-//      and its radial lift diverges more across renderers than the soft-light
-//      blend it was meant to avoid. Every tile is now the watermark treatment.
-//   4. A stronger watermark. Upstream's soft-light at 0.55, behind a mask
-//      falling to zero, was not legible on any of our plates. It is now
-//      overlay at 0.75 behind a mask that keeps 0.30 at the far corner — see
-//      buildIconSVG for the reasoning and the colour-shift trade.
+// The watermark is read from ./logo.svg at startup rather than inlined, so
+// swapping the mark is a file swap; its viewBox comes from that file too.
 //
-// The MCP watermark is read from ./logo.svg at startup rather than inlined, so
-// swapping the mark is a file swap. Its viewBox is read from that file too.
+// resvg is the only rasteriser these icons are actually rendered with, which
+// is what makes mix-blend-mode safe to rely on in buildIconSVG: it honours the
+// blend, and the PNGs it emits are the ones committed and served. A different
+// rasteriser will not necessarily agree — librsvg, for one, differs slightly.
 
 import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { basename, extname, join, resolve } from 'node:path';
@@ -277,11 +272,12 @@ function buildIconSVG({ glyph, metrics, c1, c2, size = 512, ink, id = 'i', mcpMa
 
   const bg = `<rect width="${S}" height="${S}" fill="url(#${u('bg')})"/>`;
 
-  // overlay, not soft-light: soft-light at 0.55 left the mark barely legible on
-  // every plate. overlay amplifies the backdrop rather than gently tinting it,
-  // so the ribbon reads at a glance. The trade is a visible shift in the
-  // plate's apparent hue — blue picks up a cyan cast, red lightens toward pink
-  // — accepted deliberately in exchange for the mark actually being visible.
+  // overlay rather than soft-light: soft-light only tints, and at any opacity
+  // that keeps the plate looking clean it leaves the mark too faint to read.
+  // overlay amplifies the backdrop instead, so the ribbon reads at a glance.
+  // The trade is a visible shift in the plate's apparent hue — blue picks up a
+  // cyan cast, red lightens toward pink — taken deliberately, because a
+  // watermark nobody can see is not worth the bytes.
   const mark = !mcpMark ? '' :
     `<svg x="${wx}" y="${wy}" width="${wm}" height="${wm}" viewBox="${MARK.viewBox.join(' ')}" ` +
     `fill="${INK}" opacity="0.75" mask="url(#${u('fade')})" ` +
@@ -292,11 +288,10 @@ function buildIconSVG({ glyph, metrics, c1, c2, size = 512, ink, id = 'i', mcpMa
     `<linearGradient id="${u('bg')}" x1="0" y1="0" x2="0.82" y2="1">` +
     `<stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient>` +
     // The mask fades the mark along the diagonal so it reads as a watermark
-    // rather than a second logo. It used to fall to 0.35 by mid-tile and 0 at
-    // the far corner, which with the old 0.55 opacity meant an effective alpha
-    // near 0.19 through the middle — most of the invisibility came from here,
-    // not from the blend mode. It now keeps real presence across the whole
-    // tile while still falling off.
+    // rather than a second logo. These stops, not the opacity above, are the
+    // dominant lever on how visible it ends up: they multiply with it, so a
+    // mid-tile stop of 0.35 against opacity 0.55 leaves an effective alpha
+    // near 0.19 through the middle of the tile. Tune here first.
     `<linearGradient id="${u('fadeG')}" x1="0" y1="0" x2="0.5" y2="0.87">` +
     `<stop offset="0.08" stop-color="#fff"/><stop offset="0.58" stop-color="#fff" stop-opacity="0.72"/>` +
     `<stop offset="0.92" stop-color="#fff" stop-opacity="0.3"/></linearGradient>` +
