@@ -16,8 +16,12 @@ MAIL_MCP_REPO := https://github.com/tecnologicachile/mail-mcp.git
 # ebay-mcp normally ships prebuilt from npm; these drive publish/ebay-mcp,
 # which exists only while the service tracks an unreleased fork branch.
 EBAY_MCP_VERSION ?= 1.15.0-browse.4
+# The image keeps the plain name while the source repo carries the fork-
+# prefix: they are different namespaces. The GHCR package is not linked to a
+# repo, so renaming the fork does not touch it, and the host pins this image by
+# digest — renaming the package would mean a rebuild and redeploy for nothing.
 EBAY_MCP_IMAGE := ghcr.io/nickawilliams/ebay-mcp
-EBAY_MCP_REPO := https://github.com/nickawilliams/ebay-mcp.git
+EBAY_MCP_REPO := https://github.com/nickawilliams/fork-ebay-mcp.git
 EBAY_MCP_REF ?= feat/browse-item-search
 
 default: help

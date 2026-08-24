@@ -2,7 +2,7 @@
 #
 # The service normally installs ebay-mcp from npm (see the git history for the
 # one-line form, and restore it once the branch lands upstream). It currently
-# runs a build of nickawilliams/ebay-mcp@feat/browse-item-search, which adds
+# runs a build of nickawilliams/fork-ebay-mcp@feat/browse-item-search, which adds
 # Buy Browse active-listing search — the upstream package is Sell-only, so
 # there is no marketplace search without it.
 #

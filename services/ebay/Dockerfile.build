@@ -15,7 +15,7 @@
 
 FROM node:22-alpine AS build
 
-ARG EBAY_MCP_REPO=https://github.com/nickawilliams/ebay-mcp.git
+ARG EBAY_MCP_REPO=https://github.com/nickawilliams/fork-ebay-mcp.git
 ARG EBAY_MCP_REF=feat/browse-item-search
 # Commit the ref pointed at when the build was launched. Load-bearing for
 # correctness, not just provenance: `RUN git clone` is cached on the command
