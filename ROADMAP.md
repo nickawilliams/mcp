@@ -238,6 +238,42 @@ does **not** live in this repo — it arrives as an external image dependency
   churn silently eats slots. Nothing about CIMD raises the ceiling — only
   Essentials ($35/mo, 100 apps) or a provider switch does, per the 2026-08-09
   evaluation above.
+- **Stytch evaluation (2026-08-24)**: the 2026-08-09 provider re-evaluation
+  weighed WorkOS AuthKit, Keycloak, and generic OSS; Stytch was never
+  considered, because that pass was framed around DCR, custom domains, and
+  RFC 8707 rather than around CIMD statelessness — the criterion that
+  actually bites. Assessed against the three questions that killed the
+  earlier candidates:
+  - **CIMD entity model** — Stytch fetches and validates the metadata
+    document *during authorization* and refreshes it periodically, rather
+    than pre-storing a client record; its docs contrast this explicitly with
+    dashboard/API-created clients, which are "stored as persistent records."
+    No client quota is documented. Its DCR also deduplicates public clients
+    by hashing the submitted metadata, returning the existing client_id
+    instead of minting a second — which would have prevented our debris
+    problem outright. This is the one axis where Stytch is structurally
+    better than Auth0, not merely cheaper. Caveat: CIMD is Beta there.
+  - **RFC 8707** — supported, and documented specifically for MCP: the
+    `resource` parameter is required at both authorize and token, and lands
+    in the token's audience claim. This is what disqualified Keycloak, so
+    the per-service `audience_whitelist` model in the Caddyfile would
+    survive a move.
+  - **Custom domain** — supported, and it sets the JWT `iss` to the custom
+    domain, which is the property that keeps `auth.nickawilliams.com`
+    portable. Plan gating is UNRESOLVED: the docs describe configuration
+    without pricing, and a $99/mo charge exists for removing Stytch
+    branding. Whether the custom domain rides along with that, is separate,
+    or is free is the open question — and it is decisive, since a $99/mo
+    gate is exactly what disqualified WorkOS. Free tier is 10k MAU.
+
+  **Not acting on this yet.** The entity-model advantage is real, but the
+  problem is not currently biting (8 of 10 apps, GC script working), CIMD is
+  Beta at Stytch, and migrating an issuer that three client families hold
+  live grants against is real work. Revisit if the cap actually blocks a
+  registration, if Auth0 ships JiT CIMD without fixing entity materialization
+  (see the note above), or if the ChatGPT per-connector behavior turns out to
+  be per *user* after all. Resolve the custom-domain pricing question first —
+  it is one email and it decides the rest.
 - **Audience canonicalization split (2026-08-11)**: clients disagree on the
   RFC 8707 `resource` form for a bare-origin server. claude.ai and ChatGPT
   send the configured URL verbatim (`https://mail.mcp.nickawilliams.com`,
