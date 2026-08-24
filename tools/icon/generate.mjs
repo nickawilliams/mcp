@@ -10,7 +10,7 @@
 // output (--no-png) runs with zero dependencies.
 //
 // Provenance: consolidated from the Claude Design session's mcp-icon.mjs +
-// mcp-icon-gen.js + glyphs/glyphs.js. Three deliberate departures from those:
+// mcp-icon-gen.js + glyphs/glyphs.js. Four deliberate departures from those:
 //
 //   1. One file, no exports. Nothing imports this; it is only ever a CLI.
 //   2. No browser support. The upstream generator carried DOM/canvas versions
@@ -20,6 +20,10 @@
 //      with — matte's MCP mark sits at opacity 0.15 and all but disappears,
 //      and its radial lift diverges more across renderers than the soft-light
 //      blend it was meant to avoid. Every tile is now the watermark treatment.
+//   4. A stronger watermark. Upstream's soft-light at 0.55, behind a mask
+//      falling to zero, was not legible on any of our plates. It is now
+//      overlay at 0.75 behind a mask that keeps 0.30 at the far corner — see
+//      buildIconSVG for the reasoning and the colour-shift trade.
 //
 // The MCP watermark is read from ./logo.svg at startup rather than inlined, so
 // swapping the mark is a file swap. Its viewBox is read from that file too.
@@ -273,18 +277,29 @@ function buildIconSVG({ glyph, metrics, c1, c2, size = 512, ink, id = 'i', mcpMa
 
   const bg = `<rect width="${S}" height="${S}" fill="url(#${u('bg')})"/>`;
 
+  // overlay, not soft-light: soft-light at 0.55 left the mark barely legible on
+  // every plate. overlay amplifies the backdrop rather than gently tinting it,
+  // so the ribbon reads at a glance. The trade is a visible shift in the
+  // plate's apparent hue — blue picks up a cyan cast, red lightens toward pink
+  // — accepted deliberately in exchange for the mark actually being visible.
   const mark = !mcpMark ? '' :
     `<svg x="${wx}" y="${wy}" width="${wm}" height="${wm}" viewBox="${MARK.viewBox.join(' ')}" ` +
-    `fill="${INK}" opacity="0.55" mask="url(#${u('fade')})" ` +
-    `style="mix-blend-mode:soft-light" overflow="visible">${MARK.inner}</svg>`;
+    `fill="${INK}" opacity="0.75" mask="url(#${u('fade')})" ` +
+    `style="mix-blend-mode:overlay" overflow="visible">${MARK.inner}</svg>`;
 
   const defs =
     `<clipPath id="${u('clip')}"><rect width="${S}" height="${S}" rx="${R}" ry="${R}"/></clipPath>` +
     `<linearGradient id="${u('bg')}" x1="0" y1="0" x2="0.82" y2="1">` +
     `<stop offset="0" stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient>` +
+    // The mask fades the mark along the diagonal so it reads as a watermark
+    // rather than a second logo. It used to fall to 0.35 by mid-tile and 0 at
+    // the far corner, which with the old 0.55 opacity meant an effective alpha
+    // near 0.19 through the middle — most of the invisibility came from here,
+    // not from the blend mode. It now keeps real presence across the whole
+    // tile while still falling off.
     `<linearGradient id="${u('fadeG')}" x1="0" y1="0" x2="0.5" y2="0.87">` +
-    `<stop offset="0.08" stop-color="#fff"/><stop offset="0.58" stop-color="#fff" stop-opacity="0.35"/>` +
-    `<stop offset="0.92" stop-color="#fff" stop-opacity="0"/></linearGradient>` +
+    `<stop offset="0.08" stop-color="#fff"/><stop offset="0.58" stop-color="#fff" stop-opacity="0.72"/>` +
+    `<stop offset="0.92" stop-color="#fff" stop-opacity="0.3"/></linearGradient>` +
     `<mask id="${u('fade')}"><rect x="-200" y="-200" width="1600" height="1600" fill="url(#${u('fadeG')})"/></mask>`;
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${S} ${S}" role="img">` +
