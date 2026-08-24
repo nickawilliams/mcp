@@ -23,6 +23,17 @@
 - Conventional Commits with a scope, matching the existing history:
   `iac(mcp):`, `docs(mcp):`, `chore(mcp):`.
 
+## Auth failures
+
+- A client that cannot authorize is almost always an unregistered client, not
+  a broken token. Two mechanisms, two different failures: `403 limit of
+  entities` is DCR against the free plan's 10-app cap (`make maintenance/gc
+  GC=--dry-run`); `invalid_request: Unknown client: <url>` is CIMD needing a
+  `cimd_clients` entry in the infrastructure repo (`make
+  maintenance/cimd-pending` prints the URL to add). Run the matching probe
+  before touching Caddy or the resource servers — see ROADMAP.md, "DCR vs
+  CIMD", for which side owns each limit.
+
 ## Conventions
 
 - Template a delivered file (`*.tftpl`) only when it must embed values

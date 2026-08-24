@@ -186,6 +186,58 @@ does **not** live in this repo — it arrives as an external image dependency
   in the same pass: CIMD clients get `tpc_*` internal ids like DCR debris, so
   `auth0-gc.sh` now keys on `external_metadata_type == "dcr"` instead of the
   prefix (a fresh CIMD registration has zero grants and looked collectable).
+- **DCR vs CIMD — which limit bites, and whose fault (added 2026-08-24)**:
+  the two registration mechanisms fail in different ways, and confusing them
+  costs a debugging cycle every time. Both mint a `tpc_*` application, so
+  **both count against the same 10-app free-plan cap** — CIMD's win is not
+  bypassing the cap but that entries accrue per client *app* instead of per
+  *machine*, so pressure stops scaling with device count.
+
+  | | DCR (RFC 7591) | CIMD (metadata-document client IDs) |
+  |---|---|---|
+  | How a client registers | Self-registers at `/oidc/register`, just-in-time, once per install/machine | Its metadata URL *is* the `client_id`; must be pre-registered in terraform `cimd_clients`, once per client app |
+  | Limit you hit | 10-application cap → `403 limit of entities`; interrupted flows leave debris | `invalid_request: Unknown client: <url>` until the entry exists |
+  | Diagnose with | `make maintenance/gc GC=--dry-run` | `make maintenance/cimd-pending` |
+  | Whose limitation | **Auth0** — mints a permanent app per registration, caps apps at 10 | **Auth0** — advertises CIMD but ships no just-in-time acceptance |
+
+  The switch is one-way: `client_id_metadata_document_supported` makes capable
+  clients skip DCR entirely, with no fallback and a hard fail. Enabling CIMD
+  *replaces* a working path rather than adding one, so every CIMD-capable
+  client breaks until its URL is registered.
+
+  One client-side exception to "once per client app": **ChatGPT mints a
+  per-connector metadata URL** (`https://chatgpt.com/oauth/<id>/client.json`,
+  where `<id>` also appears in its `redirect_uris` as
+  `https://chatgpt.com/connector/oauth/<id>`), so for ChatGPT the rule
+  degrades to once per *connector* — deleting and re-adding a connector
+  burns another `cimd_clients` entry and another app slot. That is OpenAI's
+  behavior, not Auth0's; claude.ai and Claude Code use stable app-level URLs
+  and behave as documented. Observed 2026-08-24 when the ChatGPT app install
+  failed with `Unknown client`; inferred from the shared id between
+  `client_id` and `redirect_uris`, not yet confirmed against a second
+  connector.
+
+  **When Auth0 ships just-in-time CIMD, do not read it as pure good news.**
+  CIMD changes the *unit* of cap growth (per client app instead of per
+  machine); it does not raise the ceiling, because every CIMD registration
+  still mints an application entity and the cap counts entities. Today the
+  admin gate incidentally protects the cap: an unregistered URL fails at
+  `/authorize` and consumes nothing, so a slot is spent only by an explicit
+  `cimd_clients` entry. Just-in-time removes that gate — any CIMD client that
+  appears mints its own app, which is DCR's failure mode again, merely bounded
+  by distinct URLs instead of distinct installs. The loud, actionable
+  "Unknown client" becomes silent slot consumption until `403 limit of
+  entities`. That the entity survives is implied by the field name itself:
+  `external_metadata_created_by: client` is an attribute *on the client
+  entity*, so the entity persists and only its creator changes. Two
+  consequences to handle in the same pass if it lands: (a) `auth0-gc.sh` goes
+  stale again — its `external_metadata_type == "dcr"` filter would need to
+  also reap *client-created* CIMD clients while sparing terraform-created
+  ones, i.e. key on `external_metadata_created_by`; (b) ChatGPT becomes the
+  worst case, since per-connector URLs plus automatic minting means connector
+  churn silently eats slots. Nothing about CIMD raises the ceiling — only
+  Essentials ($35/mo, 100 apps) or a provider switch does, per the 2026-08-09
+  evaluation above.
 - **Audience canonicalization split (2026-08-11)**: clients disagree on the
   RFC 8707 `resource` form for a bare-origin server. claude.ai and ChatGPT
   send the configured URL verbatim (`https://mail.mcp.nickawilliams.com`,
