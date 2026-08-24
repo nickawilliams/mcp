@@ -183,9 +183,14 @@ publish/ebay-mcp:
 # two stops — teaching the generator `--color '#a,#b'` is the cheap path, and a
 # better home for the second colour than a mark that is a smudge at 16px.
 #
-# The generator runs in a throwaway image (tools/icon/) because it needs Node
-# and a rasteriser that nothing else here wants; docker is already required by
-# the publish/* targets, so this adds no new dependency.
+# The generator runs in a throwaway image (tools/icon/) because it needs Node,
+# a rasteriser and two PNG optimisers that nothing else here wants; docker is
+# already required by the publish/* targets, so this adds no new dependency.
+#
+# The PNGs are quantised to a 24-colour palette and re-deflated, which is a
+# ~90% saving and keeps every 512 tile under 10 kB — the cap ChatGPT's app
+# marketplace applies to an uploaded icon. Pass --palette to the generator to
+# trade size against banding; 16 colours starts to step the watermark ribbon.
 
 ICON_GLYPH := logo.svg
 ICON_OUT ?= caddy/icons

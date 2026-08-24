@@ -17,6 +17,16 @@ WORKDIR /icon
 COPY package.json ./
 RUN npm install --omit=dev --no-audit --no-fund
 
+# PNG optimisation. resvg writes 32-bit RGBA at low compression effort, which
+# leaves a 512 tile near 100 kB; pngquant (palette) plus zopflipng (deflate)
+# take that under 9 kB. Both are optional at runtime -- the script falls back to
+# writing PNGs as rendered -- but the image is where they are meant to live.
+# zopflipng ships in Debian's `zopfli` package; oxipng, which is marginally
+# better, is not packaged for Debian and would mean fetching a release binary.
+RUN apt-get update \
+	&& apt-get install --yes --no-install-recommends pngquant zopfli \
+	&& rm -rf /var/lib/apt/lists/*
+
 # logo.svg is the MCP watermark, read from disk at startup — it must sit beside
 # the script, which resolves it relative to its own location.
 COPY generate.mjs logo.svg ./

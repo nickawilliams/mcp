@@ -24,8 +24,13 @@
 // The MCP watermark is read from ./logo.svg at startup rather than inlined, so
 // swapping the mark is a file swap. Its viewBox is read from that file too.
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { basename, extname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const run = promisify(execFile);
 
 const die = m => { console.error('generate: ' + m); process.exit(1); };
 
@@ -33,7 +38,8 @@ const die = m => { console.error('generate: ' + m); process.exit(1); };
 const FLAGS = {
   out: 'icons', color: null, name: null, sizes: null,
   chroma: 1, png: true, 'mcp-mark': true, rounded: true, json: false, quiet: false,
-  ico: false, manifest: false, 'flat-names': false
+  ico: false, manifest: false, 'flat-names': false,
+  optimize: true, palette: 24
 };
 
 /* ---------- the ladder ---------- */
@@ -57,6 +63,8 @@ const HELP = `generate — build an MCP service icon set from a brand SVG glyph
   --ico              also write <prefix>.ico (16/32/48 packed, for /favicon.ico)
   --manifest         also write <prefix>.webmanifest with the PWA icons block
   --flat-names       favicon.ico / icon-<n>.png, no prefix (single-glyph runs only)
+  --palette <n>      quantise PNGs to n colours       (default: 24)
+  --no-optimize      skip PNG quantisation/recompression
   --chroma <n>       gradient saturation multiplier   (default: 1)
   --no-png           emit the master SVG only, no rasteriser needed
   --no-mcp-mark      omit the MCP watermark (plain branded tile)
@@ -75,6 +83,7 @@ function parseArgs(argv) {
     if (a === '-h' || a === '--help') out.help = true;
     else if (a === '-q' || a === '--quiet') out.quiet = true;
     else if (a === '--no-png') out.png = false;
+    else if (a === '--no-optimize') out.optimize = false;
     else if (a === '--no-mcp-mark') out['mcp-mark'] = false;
     else if (a === '--square') out.rounded = false;
     else if (a === '--json') out.json = true;
@@ -310,6 +319,57 @@ async function loadRasterizer() {
   return null;
 }
 
+/* ---------- PNG optimisation (optional external tools) ---------- */
+// resvg emits 32-bit RGBA at a low compression effort — a 512 tile lands near
+// 100 kB despite containing only ~1.3k distinct colours, because a smooth
+// gradient defeats PNG's filters. Quantising to a small palette and then
+// re-deflating gets that under 9 kB with no visible change at icon sizes;
+// 24 colours is the knee, 16 starts to band the watermark ribbon.
+//
+// Both tools are optional: without them the PNGs are simply written as
+// rendered, so the script still runs anywhere. Dithering is deliberately off
+// (--nofs) — it doubles or triples the file by turning smooth ramps into noise
+// that will not compress, and measures no better.
+async function have(bin, args) {
+  try { await run(bin, args); return true; }
+  catch (e) { return e.code !== 'ENOENT'; }   // present but non-zero still counts
+}
+
+async function loadOptimizer(palette) {
+  const [q, z] = await Promise.all([
+    have('pngquant', ['--version']), have('zopflipng', ['-h'])]);
+  if (!q && !z) return null;
+  return {
+    palette, pngquant: q, zopflipng: z,
+    name: [q && 'pngquant', z && 'zopflipng'].filter(Boolean).join('+')
+  };
+}
+
+// Never returns a larger buffer than it was given, so a tool that makes a
+// particular image worse simply has no effect.
+async function optimizePNG(buf, opt, dir) {
+  if (!opt) return buf;
+  const a = join(dir, 'in.png'), b = join(dir, 'out.png');
+  let cur = buf;
+  if (opt.pngquant) {
+    await writeFile(a, cur);
+    try {
+      await run('pngquant', ['--force', '--quality', '0-100', '--speed', '1',
+        '--nofs', String(opt.palette), '-o', b, a]);
+      cur = await readFile(b);
+    } catch {}
+  }
+  if (opt.zopflipng) {
+    await writeFile(a, cur);
+    try {
+      await run('zopflipng', ['-y', '--iterations=5', '--filters=0me', a, b]);
+      const z = await readFile(b);
+      if (z.length < cur.length) cur = z;
+    } catch {}
+  }
+  return cur.length < buf.length ? cur : buf;
+}
+
 /* ---------- .ico container ---------- */
 // An .ico is a 6-byte header, one 16-byte directory entry per image, then the
 // image payloads — and since Vista the payloads may be PNGs verbatim, so the
@@ -344,11 +404,23 @@ if (batch && opts.color) die('--color applies to one glyph; drop it so each is s
 const raster = opts.png ? await loadRasterizer() : null;
 if (opts.png && !raster) die('No rasteriser found. Run `npm i @resvg/resvg-js` (or `sharp`), or pass --no-png.');
 
+const palette = parseInt(opts.palette, 10);
+if (!(palette >= 2 && palette <= 256)) die(`--palette must be 2-256, got "${opts.palette}".`);
+const optimizer = (opts.png && opts.optimize) ? await loadOptimizer(palette) : null;
+if (opts.png && opts.optimize && !optimizer && !opts.quiet) {
+  console.error('generate: no pngquant/zopflipng on PATH — writing PNGs unoptimised.');
+}
+
 const dir = resolve(opts.out);
 await mkdir(dir, { recursive: true });
+const work = await mkdtemp(join(tmpdir(), 'mcp-icon-'));
 
 const results = [];
-for (const src of inputs) results.push(await one(src));
+try {
+  for (const src of inputs) results.push(await one(src));
+} finally {
+  await rm(work, { recursive: true, force: true });
+}
 
 if (opts.json) console.log(JSON.stringify(batch ? results : results[0], null, 2));
 else if (!opts.quiet) {
@@ -356,7 +428,15 @@ else if (!opts.quiet) {
     console.log(`${basename(m.source)}  →  ${m.out}`);
     console.log(`  brand ${m.brand}   ramp ${m.ramp[0]} → ${m.ramp[1]}   glyph ${m.glyphScale}em` +
       (m.ink != null ? `   ink ${(m.ink * 100).toFixed(1)}%` : '  (no metrics: --no-png)'));
-    for (const f of m.files) console.log(`  ${f.file.padEnd(28)} ${f.use}`);
+    if (m.optimizer) {
+      const pct = m.pngBytesRaw ? (100 - m.pngBytes / m.pngBytesRaw * 100).toFixed(0) : '0';
+      console.log(`  ${m.optimizer} @ ${m.palette} colours: ` +
+        `${(m.pngBytesRaw / 1024).toFixed(1)}K → ${(m.pngBytes / 1024).toFixed(1)}K (-${pct}%)`);
+    }
+    for (const f of m.files) {
+      const sz = f.bytes != null ? `${String(Math.round(f.bytes / 1024 * 10) / 10).padStart(6)}K  ` : ' '.repeat(9);
+      console.log(`  ${f.file.padEnd(24)}${sz}${f.use}`);
+    }
   }
   if (batch) console.log(`\n${results.length} icon sets, ${results.reduce((n, m) => n + m.files.length, 0)} files.`);
 }
@@ -392,13 +472,19 @@ async function one(src) {
   await writeFile(join(dir, masterName), buildIconSVG({ ...shared, id: prefix, size: 512 }));
   written.push({ file: masterName, kind: 'svg', size: 512, use: 'master' });
 
+  // Optimise before anything consumes the buffer: the .ico below packs these
+  // PNGs verbatim, so optimising the files afterwards would leave it holding
+  // the unoptimised originals.
+  let rawBytes = 0, outBytes = 0;
   for (const size of sizes) {
     const svg = buildIconSVG({ ...shared, id: `${prefix}-${size}`, size });
     const name = `${stem}-${size}.png`;
-    const buf = await raster.png(svg, size);
+    const raw = await raster.png(svg, size);
+    const buf = await optimizePNG(raw, optimizer, work);
+    rawBytes += raw.length; outBytes += buf.length;
     pngs.set(size, buf);
     await writeFile(join(dir, name), buf);
-    written.push({ file: name, kind: 'png', size, use: useOf[size] || '' });
+    written.push({ file: name, kind: 'png', size, use: useOf[size] || '', bytes: buf.length });
   }
 
   // /favicon.ico — still the fallback Windows, Safari pinned tabs and any
@@ -431,6 +517,9 @@ async function one(src) {
   return {
     source: src, brand: base, ramp: [c1, c2],
     glyphScale: glyphScale(metrics), ink: metrics ? +(metrics.ink).toFixed(4) : null,
-    rasterizer: raster?.name || null, out: dir, files: written
+    rasterizer: raster?.name || null,
+    optimizer: optimizer?.name || null, palette: optimizer ? palette : null,
+    pngBytes: outBytes, pngBytesRaw: rawBytes,
+    out: dir, files: written
   };
 }
