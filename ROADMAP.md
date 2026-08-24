@@ -258,22 +258,32 @@ does **not** live in this repo — it arrives as an external image dependency
     in the token's audience claim. This is what disqualified Keycloak, so
     the per-service `audience_whitelist` model in the Caddyfile would
     survive a move.
-  - **Custom domain** — supported, and it sets the JWT `iss` to the custom
-    domain, which is the property that keeps `auth.nickawilliams.com`
-    portable. Plan gating is UNRESOLVED: the docs describe configuration
-    without pricing, and a $99/mo charge exists for removing Stytch
-    branding. Whether the custom domain rides along with that, is separate,
-    or is free is the open question — and it is decisive, since a $99/mo
-    gate is exactly what disqualified WorkOS. Free tier is 10k MAU.
+  - **Custom domain** — supported and **free**, confirmed 2026-08-24 from a
+    real Stytch workspace rather than the docs (which omit pricing). Only
+    custom *email sender* domains are gated to paid tiers, which we do not
+    need — Auth0 sends no mail for us either. It sets the JWT `iss` to the
+    custom domain, so `auth.nickawilliams.com` stays portable. This was the
+    decisive question, since the equivalent $99/mo gate is what
+    disqualified WorkOS; Stytch clears it. Free tier is 10k MAU.
 
-  **Not acting on this yet.** The entity-model advantage is real, but the
-  problem is not currently biting (8 of 10 apps, GC script working), CIMD is
-  Beta at Stytch, and migrating an issuer that three client families hold
-  live grants against is real work. Revisit if the cap actually blocks a
-  registration, if Auth0 ships JiT CIMD without fixing entity materialization
-  (see the note above), or if the ChatGPT per-connector behavior turns out to
-  be per *user* after all. Resolve the custom-domain pricing question first —
-  it is one email and it decides the rest.
+  **Verdict: Stytch clears all three criteria** — the first candidate to do
+  so, where WorkOS failed on cost and Keycloak on RFC 8707. Not migrating
+  yet, for reasons that are now about risk rather than fit: their CIMD is
+  Beta, the cap is not currently blocking (8 of 10 apps, GC script working),
+  and moving an issuer that three client families hold live grants against
+  forces a re-consent across every one of them.
+
+  **Next step is a spike, not a migration.** Stand one service up against
+  Stytch in parallel and verify by observation, not documentation, that (a)
+  a CIMD authorization accrues no persistent client entity, (b) the RFC 8707
+  `resource` round-trip produces the audience the Caddyfile expects, and (c)
+  the trailing-slash audience split behaves. That last pair matters because
+  this entire thread began with Auth0's docs advertising CIMD while the
+  implementation quietly required admin registration — the same class of
+  gap is exactly what a spike would catch before a migration commits to it.
+  Escalate to a real migration if the cap blocks a registration, if Auth0
+  ships JiT CIMD without fixing entity materialization (see the note above),
+  or if ChatGPT's per-connector behavior turns out to be per *user*.
 - **Audience canonicalization split (2026-08-11)**: clients disagree on the
   RFC 8707 `resource` form for a bare-origin server. claude.ai and ChatGPT
   send the configured URL verbatim (`https://mail.mcp.nickawilliams.com`,
