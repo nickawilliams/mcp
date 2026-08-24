@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1800 1694">
+  <!-- The "e" from the eBay logotype, cut out of the full wordmark just left
+       of the b's stem and re-traced. The wordmark itself is unreadable at
+       favicon sizes; the e is the part that still reads at 16px. The mark
+       alone. #e53238 is eBay red, the colour this "e" carries in the
+       logotype. -->
+  <!-- The fill is the brand colour, and it is the ONE hex in this file: the
+       generator sniffs it to build the tile gradient, then strips it so the
+       mark inherits the tile's ink. Keep it to a single fill — sniffing picks
+       the most-repeated hex, not the most prominent one, so a multi-colour
+       source would pick by accident. -->
+  <g fill="#e53238" transform="translate(0,1694) scale(.1,-.1)">
+    <path d="M8955 16933 c-205 -4 -601 -22 -820 -39 -2239 -165 -4042 -804 -5395 -1913 -404 -331 -800 -745 -1117 -1166 -917 -1219 -1449 -2766 -1588 -4615 -46 -623 -44 -1344 5 -1920 122 -1409 511 -2648 1158 -3695 190 -307 431 -632 676 -910 115 -131 412 -430 551 -554 755 -677 1654 -1188 2717 -1545 971 -327 2047 -513 3274 -567 362 -16 1445 -7 1744 15 704 51 1288 130 1880 257 2455 525 4212 1705 5060 3399 194 387 351 831 444 1260 20 91 39 175 41 188 l5 22 -1853 0 -1854 0 -28 -77 c-48 -133 -123 -302 -199 -448 -330 -638 -842 -1162 -1511 -1546 -260 -149 -621 -306 -940 -409 -1004 -323 -2252 -386 -3338 -169 -714 143 -1383 414 -1952 792 -126 84 -310 223 -445 336 -140 118 -406 381 -522 516 -646 757 -1054 1676 -1223 2760 -25 162 -62 500 -66 610 l-3 60 7172 3 7172 2 -2 1303 -3 1302 -32 180 c-103 574 -201 973 -353 1426 -276 825 -657 1545 -1154 2184 -537 690 -1209 1275 -1986 1729 -190 111 -572 306 -773 395 -929 411 -1988 674 -3137 781 -532 49 -1007 65 -1605 53z m605 -2423 c1129 -65 2092 -358 2858 -872 494 -331 915 -774 1212 -1273 393 -662 610 -1429 666 -2352 l7 -113 -5292 0 -5291 0 0 23 c0 12 12 101 26 197 113 778 339 1457 684 2050 557 958 1440 1655 2570 2030 501 166 1101 276 1690 309 212 12 668 12 870 1z" />
+  </g>
+</svg>

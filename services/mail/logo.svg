@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- Envelope mark (Lucide "mail"). The paint sits on the shapes, not on the
+       root <svg>: the icon generator keeps only the root's children, so
+       root-level fill/stroke would be discarded and the outline would fall
+       back to a solid fill. fill="none" is a genuine hole and survives;
+       the stroke is rewritten to the tile's ink colour, so the brand hex
+       below serves only as the sniff source. #4ea0f5 is arbitrary: mail-mcp
+       has no brand of its own. -->
+  <!-- That hex is the ONE in this file: the generator sniffs it to build the
+       tile gradient, then strips it. Keep it to a single colour — sniffing
+       picks the most-repeated hex, not the most prominent one, so a
+       multi-colour source would pick by accident. -->
+  <path d="m22 7-8.991 5.727a2 2 0 0 1-2.009 0L2 7"
+        fill="none" stroke="#4ea0f5" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" />
+  <rect x="2" y="4" width="20" height="16" rx="2"
+        fill="none" stroke="#4ea0f5" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" />
+</svg>

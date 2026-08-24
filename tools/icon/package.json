@@ -1,0 +1,9 @@
+{
+  "name": "mcp-icon",
+  "private": true,
+  "type": "module",
+  "description": "Build-image manifest for the icon generator (see make icons).",
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

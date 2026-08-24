@@ -61,6 +61,25 @@
 			respond `{"resource":"https://graphiti.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
 		}
 
+		# Brand icons, unauthenticated by design: a browser fetches
+		# /favicon.ico before it has any token, and a 401 there would just
+		# leave a blank tab. Nothing here is a secret — the files are the
+		# committed output of `make icons`, delivered by the same ./caddy
+		# bind mount that carries this file, so an icon push is a git push
+		# plus `make deploy` with no compose change. Missing files 404 on
+		# their own, so a service without a glyph yet needs nothing removed.
+		# The list is explicit rather than a blanket file_server root: only
+		# these paths escape auth. +1 service = +1 copy of this block with
+		# its own icons/<service> root.
+		@graphiti-icons path /favicon.ico /icon.svg /icon-*.png
+		handle @graphiti-icons {
+			root * /etc/caddy/icons/graphiti
+			# Browsers re-ask for a favicon constantly; a day of freshness
+			# keeps that off the box without outliving a rebrand by much.
+			header Cache-Control "public, max-age=86400"
+			file_server
+		}
+
 		# Machine path: static bearer, validated locally.
 		@graphiti-bearer header Authorization "Bearer {$MCP_TOKEN_GRAPHITI}"
 		handle @graphiti-bearer {
@@ -108,6 +127,15 @@
 			respond `{"resource":"https://mail.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
 		}
 
+		# Brand icons — see the graphiti block above for why these paths
+		# sit in front of auth.
+		@mail-icons path /favicon.ico /icon.svg /icon-*.png
+		handle @mail-icons {
+			root * /etc/caddy/icons/mail
+			header Cache-Control "public, max-age=86400"
+			file_server
+		}
+
 		# No 400→404 session translation here (cf. the ebay block): the mail
 		# bridge runs stateless, so it issues no Mcp-Session-Id and has no
 		# session that can be evicted. Its transport-level 400s are now only
@@ -150,6 +178,15 @@
 		handle /.well-known/oauth-protected-resource {
 			header Content-Type application/json
 			respond `{"resource":"https://ebay.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
+		}
+
+		# Brand icons — see the graphiti block above for why these paths
+		# sit in front of auth.
+		@ebay-icons path /favicon.ico /icon.svg /icon-*.png
+		handle @ebay-icons {
+			root * /etc/caddy/icons/ebay
+			header Cache-Control "public, max-age=86400"
+			file_server
 		}
 
 		# ebay-mcp serves its MCP endpoint at / (not /mcp), so no rewrite —

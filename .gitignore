@@ -11,3 +11,12 @@ crash.*.log
 # Host runtime content (the host is a checkout of this repo; these live
 # alongside it untracked and must survive `git reset --hard`)
 /data/
+
+# Generated favicon sets (make icons). Explicitly un-ignored: the common macOS
+# global-gitignore rule for Finder's custom folder icon is written `Icon?`, and
+# `?` is a single-character wildcard, so it matches the directory name `icons`
+# in any path. Without this the generated tiles are silently uncommittable —
+# `make icons` looks fine, then every icon route 404s on the host, which
+# deploys by `git reset --hard`. Un-ignoring the directory is what matters:
+# git will not descend into an excluded directory to re-include files under it.
+!caddy/icons/

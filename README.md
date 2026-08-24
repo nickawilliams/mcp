@@ -66,8 +66,13 @@ mcp/
 ├── docker-compose.yaml    # platform compose: Caddy + include of each service
 ├── Dockerfile.caddy       # Caddy + Route53 DNS plugin (built on the host)
 ├── caddy/
-│   └── Caddyfile          # TLS + bearer-gated vhost per service (tokens
-│                          #   arrive as {$MCP_TOKEN_*} env at parse time)
+│   ├── Caddyfile          # TLS + bearer-gated vhost per service (tokens
+│   │                      #   arrive as {$MCP_TOKEN_*} env at parse time)
+│   └── icons/<service>/   # generated favicon set, served unauthenticated
+│                          #   by that service's vhost (`make icons`)
+├── tools/
+│   └── icon/              # icon generator + its build image (no local
+│                          #   toolchain; `make icons` runs it in docker)
 ├── scripts/
 │   └── refresh.sh         # host sync: SSM secrets -> .env, compose reconcile
 ├── services/
@@ -76,6 +81,7 @@ mcp/
 │       │                  #   suffice — see services/ebay/README.md
 │       ├── compose.yaml   #   its containers (included by the root compose)
 │       ├── config.yaml    #   its config
+│       ├── logo.svg       #   its brand mark — the icon input (`make icons`)
 │       └── docs/          #   payload docs (client instruction block, etc.)
 ├── terraform/             # root platform module (host, DNS, secrets)
 │   ├── services.tf        #   service manifest: one module block per service
@@ -149,12 +155,21 @@ provider plumbing (checkout, registry login, runners). See `AGENTS.md`.
    basenames must be unique across services (they share the host's `.env`).
 4. Register it: a `module "<name>"` block in `terraform/services.tf` and
    entries in the `services` / `service_tokens` maps in `terraform/locals.tf`.
-5. If the service needs operational documentation beyond file comments
+5. Drop the service's brand mark — the mark alone, no wordmark or plate — at
+   `services/<name>/logo.svg`, painted in the brand colour and kept to a single
+   hex (that colour is never drawn; it is what the tile gradient is derived
+   from, and a colourless glyph fails the run). Then `make icons`; services
+   without a logo are skipped. Copy the icons `handle` block into the new
+   vhost, pointed at `/etc/caddy/icons/<name>`, and commit the generated files:
+   the host runs no toolchain, it only serves what git delivered.
+6. If the service needs operational documentation beyond file comments
    (credential setup, token reseeds, upstream quirks), put it in
    `services/<name>/README.md`. `docs/` is for payload files the service
    itself consumes or serves, not operator docs.
-6. `make plan && make apply`, then commit + push + `make deploy`.
+7. `make plan && make apply`, then commit + push + `make deploy`.
 
 Removing a service is the inverse: delete both directories and the manifest,
 compose, and Caddyfile entries; the module's resources (token param, DNS)
-retire with it.
+retire with it. Its generated icons are the one thing that does not live in
+either directory — `make icons` writes them to `caddy/icons/<name>/` because
+that tree is what Caddy has mounted, so delete that too.

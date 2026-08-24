@@ -24,7 +24,7 @@ default: help
 
 .PHONY: default init fmt validate plan apply ssm logs deploy \
 		maintenance/gc maintenance/cimd-pending maintenance/ebay-token \
-		publish/mail-mcp publish/ebay-mcp help vars _print-var
+		publish/mail-mcp publish/ebay-mcp icons help vars _print-var
 
 # --- Terraform ---------------------------------------------------------------
 
@@ -154,6 +154,82 @@ publish/ebay-mcp:
 	echo "Published $(EBAY_MCP_IMAGE):$(EBAY_MCP_VERSION). Digest for pinning:"; \
 	docker buildx imagetools inspect "$(EBAY_MCP_IMAGE):$(EBAY_MCP_VERSION)" \
 		--format '{{.Manifest.Digest}}'
+
+# --- Service icons -----------------------------------------------------------
+# Brand glyph in (services/<service>/logo.svg, alongside the rest of that
+# service's payload), MCP-themed favicon set out (caddy/icons/<service>/). The
+# generated files are committed: the host runs no toolchain, it only serves
+# what git delivered, so regenerating is a local step whose output lands in a
+# normal commit. The service list is the set of services that have a logo, so
+# +1 service = +1 logo.svg and nothing here to edit; a service without one is
+# skipped rather than failing the run.
+#
+# A glyph is the mark alone — no wordmark, no background plate, no padding.
+# The generator strips fill/stroke/class/style/color so the mark inherits the
+# tile's ink, keeps genuine fill="none" holes, and re-points strokes at
+# currentColor; it drops <image>, <style> and <script>, so a mark whose shape
+# depends on a CSS class comes out empty.
+#
+# Paint each glyph in its brand colour and keep it to ONE hex. That colour is
+# never drawn — it is stripped with everything else — but it is what the tile
+# gradient is derived from, so it belongs beside the art rather than in a map
+# here. Sniffing picks the most-repeated hex rather than the most prominent
+# one, which is why a single fill matters: a multi-colour source picks by
+# accident. It also skips greys, near-black and near-white (chroma < 0.045, or
+# lightness outside 0.12-0.95), so a colourless glyph fails the run outright
+# with "No brand colour found".
+#
+# If a brand ever genuinely needs two colours, the tile gradient already has
+# two stops — teaching the generator `--color '#a,#b'` is the cheap path, and a
+# better home for the second colour than a mark that is a smudge at 16px.
+#
+# The generator runs in a throwaway image (tools/icon/) because it needs Node
+# and a rasteriser that nothing else here wants; docker is already required by
+# the publish/* targets, so this adds no new dependency.
+
+ICON_GLYPH := logo.svg
+ICON_OUT ?= caddy/icons
+ICON_IMAGE := mcp-icon:local
+# Empty defers to the generator's own LADDER (512/192/180/48/32/16), which is
+# the design's single source of truth and already carries the 16/32/48 that
+# --ico packs. Set a comma-separated list only to override it for a one-off.
+ICON_SIZES ?=
+# Narrow a run to one service: make icons ICON_SERVICE=graphiti. nullglob
+# empties the wildcard form when no service has a logo yet, but a named service
+# is not a pattern and survives as a literal — hence the -f sweep below, which
+# turns a typo'd name into the same "no glyphs matched" as no logos at all.
+ICON_SERVICE ?=
+
+## Regenerate the committed favicon sets from services/*/logo.svg
+icons:
+	@set -euo pipefail; \
+	shopt -s nullglob; \
+	for f in tools/icon/generate.mjs tools/icon/logo.svg; do \
+		if [ ! -f "$$f" ]; then echo "missing $$f" >&2; exit 1; fi; \
+	done; \
+	pattern="services/$(if $(ICON_SERVICE),$(ICON_SERVICE),*)/$(ICON_GLYPH)"; \
+	glyphs=($$pattern); \
+	for glyph in "$${glyphs[@]}"; do \
+		if [ ! -f "$$glyph" ]; then glyphs=(); break; fi; \
+	done; \
+	if [ $${#glyphs[@]} -eq 0 ]; then \
+		echo "no glyphs matched $$pattern" >&2; exit 1; \
+	fi; \
+	docker build --quiet --tag "$(ICON_IMAGE)" tools/icon >/dev/null; \
+	for glyph in "$${glyphs[@]}"; do \
+		svc=$$(basename "$$(dirname "$$glyph")"); \
+		mkdir -p "$(ICON_OUT)/$$svc"; \
+		docker run --rm --user "$$(id -u):$$(id -g)" \
+			--volume "$$PWD:/w" --workdir /w "$(ICON_IMAGE)" \
+			"$$glyph" --out "$(ICON_OUT)/$$svc" --flat-names --ico \
+			$(if $(ICON_SIZES),--sizes "$(ICON_SIZES)",); \
+	done; \
+	hidden=$$(git ls-files --others --ignored --exclude-standard --directory \
+		"$(ICON_OUT)" 2>/dev/null | head -1); \
+	if [ -n "$$hidden" ]; then \
+		echo "warning: git is ignoring $$hidden — these icons cannot be" >&2; \
+		echo "         committed, so the host will 404 them (see .gitignore)" >&2; \
+	fi
 
 # --- Utils -------------------------------------------------------------------
 
