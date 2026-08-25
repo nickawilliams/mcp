@@ -274,16 +274,78 @@ does **not** live in this repo — it arrives as an external image dependency
   forces a re-consent across every one of them.
 
   **Next step is a spike, not a migration.** Stand one service up against
-  Stytch in parallel and verify by observation, not documentation, that (a)
-  a CIMD authorization accrues no persistent client entity, (b) the RFC 8707
-  `resource` round-trip produces the audience the Caddyfile expects, and (c)
-  the trailing-slash audience split behaves. That last pair matters because
-  this entire thread began with Auth0's docs advertising CIMD while the
-  implementation quietly required admin registration — the same class of
-  gap is exactly what a spike would catch before a migration commits to it.
-  Escalate to a real migration if the cap blocks a registration, if Auth0
-  ships JiT CIMD without fixing entity materialization (see the note above),
-  or if ChatGPT's per-connector behavior turns out to be per *user*.
+  Stytch in parallel and verify by observation, not documentation. This
+  entire thread began with Auth0's docs advertising CIMD while the
+  implementation quietly required admin registration; the spike exists to
+  catch that class of gap before a migration depends on it. Escalate to a
+  real migration if the cap blocks a registration, if Auth0 ships JiT CIMD
+  without fixing entity materialization (see the note above), or if
+  ChatGPT's per-connector behavior turns out to be per *user*.
+
+  *Run it before the next batch of services, not after.* Re-consent cost
+  scales with service count, and the resource-server and client-grant counts
+  it would move scale with it too — the spike is cheapest to act on while
+  there are three services, not six.
+
+  **Setup.** Nothing touches production identity: use a separate Stytch
+  custom domain (`auth-spike.nickawilliams.com`, *not*
+  `auth.nickawilliams.com` — that issuer holds live grants across three
+  client families, and repointing it is the re-consent event this whole plan
+  defers). Give the spike its own `spike.mcp.nickawilliams.com` vhost, which
+  the wildcard cert already covers, fronting any existing backend or the
+  2026-08-07 probe server. Keep it out of terraform and out of
+  `modules/service`: that module hardcodes `auth0_resource_server`, and
+  `mcp_jwt_gate` in the Caddyfile hardcodes the Auth0 JWKS and issuer, so
+  the spike gets a throwaway copy of the snippet rather than a
+  parameterization that would outlive its usefulness.
+
+  **(a) CIMD accrues no persistent client entity.** The load-bearing claim,
+  and the only axis where Stytch is structurally better rather than merely
+  cheaper.
+  - Record the workspace's client/connected-app count before anything
+    authorizes.
+  - Authorize a headerless Claude Code against the spike host, then re-check.
+    Pass = unchanged.
+  - Repeat with a second distinct client family (claude.ai connector) — a
+    count that holds for one client but not two is dedup, not statelessness.
+  - Separately confirm the documented DCR dedup: submit identical public
+    client metadata twice, expect the same `client_id` back rather than a
+    second app.
+  - Fail signal: any counter increments per authorization. Stytch then has
+    Auth0's materialization problem and the rationale for moving collapses —
+    record that and stop.
+
+  **(b) RFC 8707 round-trip yields the audience Caddy expects.**
+  - Decode the access token; assert `aud` is exactly the resource identifier
+    the vhost whitelists, not the `client_id` and not an array carrying
+    extras.
+  - Assert `iss` is the custom domain, not the Stytch-hosted one. This is
+    what makes the issuer portable and is the reason the custom-domain
+    question was decisive.
+  - Assert RS256, and that Caddy's `jwtauth` validates offline against the
+    Stytch JWKS with no per-request call out — same property the Auth0 setup
+    relies on.
+
+  **(c) The trailing-slash audience split behaves.**
+  - Serve the PRM `resource` in the slashed form, exactly as production does.
+  - Confirm Claude Code (which normalizes via WHATWG and sends the slash) and
+    claude.ai (which takes its audience from the PRM field) both land on that
+    single audience.
+  - Pass = one resource entity serves every client family, as on Auth0. Fail
+    = two per service, which roughly doubles the entity arithmetic and
+    weakens the cap argument for moving at all.
+
+  **Worth capturing while it is up**, since the marginal cost is near zero:
+  whether ChatGPT's connector registration is per connector or per user
+  (escalation trigger 3, currently unknown), and whether Stytch applies any
+  entity cap to resource/audience registrations rather than only the 10k MAU
+  ceiling.
+
+  **Teardown.** Record outcomes here with dates and evidence, in the style of
+  the 2026-08-07 and 2026-08-22 entries — the value of this thread has been
+  that each claim carries how it was verified. Then delete the spike vhost,
+  its DNS record, and the Stytch spike app, so a half-configured second
+  issuer is not left standing.
 - **Audience canonicalization split (2026-08-11, resolved 2026-08-22)**:
   clients disagree on the RFC 8707 `resource` form for a bare-origin server.
   claude.ai and ChatGPT send the configured URL verbatim
