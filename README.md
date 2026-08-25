@@ -144,8 +144,13 @@ provider plumbing (checkout, registry login, runners). See `AGENTS.md`.
    declaring and joining its own network. In the root `docker-compose.yaml`,
    add an `include` entry, declare the network, attach caddy to it, and add
    the `MCP_TOKEN_<NAME>=${MCP_TOKEN_<NAME>}` caddy env line.
-2. Add the service's vhost block to `caddy/Caddyfile` (host matcher, bearer
-   gate on `{$MCP_TOKEN_<NAME>}`, rewrites, `reverse_proxy`). If it has
+2. Add the service's vhost block to `caddy/Caddyfile`: a host matcher, a
+   bearer gate on `{$MCP_TOKEN_<NAME>}`, and three imports — `mcp_public`
+   (OAuth metadata + icons), `mcp_jwt_gate`, and whichever proxy snippet
+   matches the upstream (`mcp_proxy_subpath` if it serves MCP under `/mcp`,
+   `mcp_proxy_root_sessions` if it serves at `/` and 400s dead sessions).
+   Copy the `@graphiti` block as the scaffold; it runs ~13 lines. Only add a
+   new snippet if the upstream fits neither proxy shape. If the service has
    persistent data, add its dir to the `mkdir -p data/...` line in
    `scripts/refresh.sh`.
 3. Create `terraform/modules/<name>/` — copy `modules/graphiti/` as the
@@ -159,9 +164,10 @@ provider plumbing (checkout, registry login, runners). See `AGENTS.md`.
    `services/<name>/logo.svg`, painted in the brand colour and kept to a single
    hex (that colour is never drawn; it is what the tile gradient is derived
    from, and a colourless glyph fails the run). Then `make icons`; services
-   without a logo are skipped. Copy the icons `handle` block into the new
-   vhost, pointed at `/etc/caddy/icons/<name>`, and commit the generated files:
-   the host runs no toolchain, it only serves what git delivered.
+   without a logo are skipped. The icon route comes with the `mcp_public`
+   import from step 2, so nothing further is needed in the Caddyfile — but do
+   commit the generated files: the host runs no toolchain, it only serves what
+   git delivered.
 6. If the service needs operational documentation beyond file comments
    (credential setup, token reseeds, upstream quirks), put it in
    `services/<name>/README.md`. `docs/` is for payload files the service

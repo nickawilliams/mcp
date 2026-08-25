@@ -14,16 +14,127 @@
 #     tenant), verified offline against its JWKS — no per-request calls to
 #     the IdP. Audience = the service URL (matches each service's
 #     auth0_resource_server identifier in terraform).
+#
+# Every vhost is assembled from the shared snippets below, so what is
+# identical across services is written once and what differs stays visible
+# in the service's own block. +1 service = +1 vhost block of ~a dozen lines
+# (plus its MCP_TOKEN_* env line in compose, and its audience in the
+# module's terraform).
 {
 	# jwtauth (ggicci/caddy-jwt, built into Dockerfile.caddy) is an auth
 	# handler; slot it where basicauth would run.
 	order jwtauth before basicauth
 }
 
+# Shared vhost fragments
+# =============================================================================
+# {args[0]} is the service name throughout — it is simultaneously the
+# subdomain, the Auth0 audience host, and the icon directory, and those three
+# are required to agree anyway.
+
+# The unauthenticated routes every service exposes.
+(mcp_public) {
+	# RFC 9728 protected-resource metadata — unauthenticated by design:
+	# clients read it to find the authorization server before they have
+	# any token. `resource` must equal the terraform identifier exactly
+	# (clients echo it as the RFC 8707 resource param). `scopes_supported`
+	# drives the scopes clients request (the MCP SDK copies it into the
+	# authorize scope param) — without offline_access here, clients send
+	# no scope at all and Auth0 never issues a refresh token.
+	#
+	# The trailing slash on `resource` is deliberate and load-bearing.
+	# Claude Code parses the server URL with the WHATWG URL API, where a
+	# bare origin always carries "/" as its path, so it requests the
+	# slashed audience however it is configured. claude.ai takes the
+	# audience from THIS FIELD rather than from its connector URL —
+	# proven 2026-08-22 by flipping it on ebay alone and watching
+	# claude.ai's next authorization follow, connector URL unchanged.
+	# The slashed form is therefore the one value both client families
+	# agree on, which is what lets each service run a single Auth0
+	# resource server instead of one per form.
+	handle /.well-known/oauth-protected-resource {
+		header Content-Type application/json
+		respond `{"resource":"https://{args[0]}.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
+	}
+
+	# Brand icons, unauthenticated by design: a browser fetches
+	# /favicon.ico before it has any token, and a 401 there would just
+	# leave a blank tab. Nothing here is a secret — the files are the
+	# committed output of `make icons`, delivered by the same ./caddy
+	# bind mount that carries this file, so an icon push is a git push
+	# plus `make deploy` with no compose change. Missing files 404 on
+	# their own, so a service without a glyph yet needs nothing removed.
+	# The path list is explicit rather than a blanket file_server root:
+	# only these paths escape auth.
+	#
+	# The matcher name is built from the argument because named matchers
+	# are scoped to the whole site block, not to the handle they sit in —
+	# a fixed name here would collide on the second import.
+	@{args[0]}-icons path /favicon.ico /icon.svg /icon-*.png
+	handle @{args[0]}-icons {
+		root * /etc/caddy/icons/{args[0]}
+		# Browsers re-ask for a favicon constantly; a day of freshness
+		# keeps that off the box without outliving a rebrand by much.
+		header Cache-Control "public, max-age=86400"
+		file_server
+	}
+}
+
+# The OAuth path's gate: anything that did not present the static bearer
+# must carry a valid Auth0 JWT. Failures 401 into handle_errors at the foot
+# of the site block, which adds the discovery pointer.
+(mcp_jwt_gate) {
+	jwtauth {
+		jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
+		issuer_whitelist https://auth.nickawilliams.com/
+		# One canonical audience — see (mcp_public) above for why it
+		# carries the trailing slash. Deliberately does NOT also accept
+		# the bare form: a client holding a stale bare-audience token
+		# would keep using it instead of re-reading the metadata, since
+		# nothing would ever 401. That is precisely what stalled this
+		# migration until the bare form was withdrawn.
+		audience_whitelist https://{args[0]}.mcp.nickawilliams.com/
+	}
+}
+
+# Upstream proxies. Args are the upstream host and port. Each service
+# imports one of these twice — once per auth path — so the two paths reach
+# the backend through identical config and cannot drift apart.
+
+# For upstreams that serve MCP under /mcp.
+(mcp_proxy_subpath) {
+	# The bare hostname IS the endpoint: map / onto the upstream's MCP
+	# path, and collapse the trailing-slash variant that would otherwise
+	# 307-redirect (with an http:// Location) at the upstream.
+	rewrite / /mcp
+	rewrite /mcp/ /mcp
+	# Some upstreams (the MCP SDK's DNS-rebinding guard) only accept
+	# a localhost Host, so present one matching the upstream's port.
+	reverse_proxy {args[0]}:{args[1]} {
+		header_up Host localhost:{args[1]}
+	}
+}
+
+# For upstreams that serve MCP at the root, and that answer evicted/unknown
+# MCP sessions with 400 where the spec requires 404 — only 404 tells clients
+# to re-initialize, so a 400 wedges the conversation. The mapping is blanket:
+# the SDK transport can also 400 a malformed body, which then reads back as a
+# dead session — an extra re-initialize, not a wedge.
+(mcp_proxy_root_sessions) {
+	rewrite /mcp /
+	rewrite /mcp/ /
+	reverse_proxy {args[0]}:{args[1]} {
+		@dead_session status 400
+		handle_response @dead_session {
+			header Content-Type application/json
+			respond `{"jsonrpc":"2.0","error":{"code":-32001,"message":"Session not found"},"id":null}` 404
+		}
+	}
+}
+
 # One wildcard cert for *.mcp.nickawilliams.com via Route53 DNS-01 (keeps
 # individual service names out of Certificate Transparency logs). Per-service
-# routing is by host matcher. +1 service = +1 vhost block (its MCP_TOKEN_*
-# env line in compose, and its audience in the module's terraform).
+# routing is by host matcher.
 *.mcp.nickawilliams.com {
 	tls {
 		dns route53
@@ -38,198 +149,66 @@
 
 	@graphiti host graphiti.mcp.nickawilliams.com
 	handle @graphiti {
-		# RFC 9728 protected-resource metadata — unauthenticated by design:
-		# clients read it to find the authorization server before they have
-		# any token. `resource` must equal the terraform identifier exactly
-		# (clients echo it as the RFC 8707 resource param). `scopes_supported`
-		# drives the scopes clients request (the MCP SDK copies it into the
-		# authorize scope param) — without offline_access here, clients send
-		# no scope at all and Auth0 never issues a refresh token.
-		#
-		# The trailing slash on `resource` is deliberate and load-bearing.
-		# Claude Code parses the server URL with the WHATWG URL API, where a
-		# bare origin always carries "/" as its path, so it requests the
-		# slashed audience however it is configured. claude.ai takes the
-		# audience from THIS FIELD rather than from its connector URL —
-		# proven 2026-08-22 by flipping it on ebay alone and watching
-		# claude.ai's next authorization follow, connector URL unchanged.
-		# The slashed form is therefore the one value both client families
-		# agree on, which is what lets each service run a single Auth0
-		# resource server instead of one per form.
-		handle /.well-known/oauth-protected-resource {
-			header Content-Type application/json
-			respond `{"resource":"https://graphiti.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
-		}
-
-		# Brand icons, unauthenticated by design: a browser fetches
-		# /favicon.ico before it has any token, and a 401 there would just
-		# leave a blank tab. Nothing here is a secret — the files are the
-		# committed output of `make icons`, delivered by the same ./caddy
-		# bind mount that carries this file, so an icon push is a git push
-		# plus `make deploy` with no compose change. Missing files 404 on
-		# their own, so a service without a glyph yet needs nothing removed.
-		# The list is explicit rather than a blanket file_server root: only
-		# these paths escape auth. +1 service = +1 copy of this block with
-		# its own icons/<service> root.
-		@graphiti-icons path /favicon.ico /icon.svg /icon-*.png
-		handle @graphiti-icons {
-			root * /etc/caddy/icons/graphiti
-			# Browsers re-ask for a favicon constantly; a day of freshness
-			# keeps that off the box without outliving a rebrand by much.
-			header Cache-Control "public, max-age=86400"
-			file_server
-		}
+		import mcp_public graphiti
 
 		# Machine path: static bearer, validated locally.
 		@graphiti-bearer header Authorization "Bearer {$MCP_TOKEN_GRAPHITI}"
 		handle @graphiti-bearer {
-			# The bare hostname IS the endpoint: map / onto the upstream's
-			# MCP path, and collapse the trailing-slash variant that would
-			# otherwise 307-redirect (with an http:// Location) at the
-			# upstream.
-			rewrite / /mcp
-			rewrite /mcp/ /mcp
-			# Some upstreams (the MCP SDK's DNS-rebinding guard) only accept
-			# a localhost Host, so present one matching the upstream's port.
-			reverse_proxy graphiti-mcp:8000 {
-				header_up Host localhost:8000
-			}
+			import mcp_proxy_subpath graphiti-mcp 8000
 		}
 
 		# OAuth path: everything else must carry a valid Auth0 JWT.
-		# Failures 401 into handle_errors below, which adds the discovery
-		# pointer.
 		handle {
-			jwtauth {
-				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
-				issuer_whitelist https://auth.nickawilliams.com/
-				# One canonical audience — see the metadata block above for
-				# why it carries the trailing slash. Deliberately does NOT
-				# also accept the bare form: a client holding a stale
-				# bare-audience token would keep using it instead of
-				# re-reading the metadata, since nothing would ever 401.
-				# That is precisely what stalled this migration until the
-				# bare form was withdrawn.
-				audience_whitelist https://graphiti.mcp.nickawilliams.com/
-			}
-			rewrite / /mcp
-			rewrite /mcp/ /mcp
-			reverse_proxy graphiti-mcp:8000 {
-				header_up Host localhost:8000
-			}
+			import mcp_jwt_gate graphiti
+			import mcp_proxy_subpath graphiti-mcp 8000
 		}
 	}
 
 	@mail host mail.mcp.nickawilliams.com
 	handle @mail {
-		handle /.well-known/oauth-protected-resource {
-			header Content-Type application/json
-			respond `{"resource":"https://mail.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
-		}
+		import mcp_public mail
 
-		# Brand icons — see the graphiti block above for why these paths
-		# sit in front of auth.
-		@mail-icons path /favicon.ico /icon.svg /icon-*.png
-		handle @mail-icons {
-			root * /etc/caddy/icons/mail
-			header Cache-Control "public, max-age=86400"
-			file_server
-		}
-
-		# No 400→404 session translation here (cf. the ebay block): the mail
-		# bridge runs stateless, so it issues no Mcp-Session-Id and has no
-		# session that can be evicted. Its transport-level 400s are now only
-		# genuinely malformed requests, and reporting those as "session not
-		# found" would send clients into a pointless re-initialize.
+		# No 400→404 session translation here (cf. the ebay block): the
+		# mail bridge runs stateless, so it issues no Mcp-Session-Id and
+		# has no session that can be evicted. Its transport-level 400s
+		# are now only genuinely malformed requests, and reporting those
+		# as "session not found" would send clients into a pointless
+		# re-initialize.
 		#
 		# Stateless also means GET returns 405 (the spec's answer when a
-		# server offers no SSE stream); clients must fall back to POST-only,
-		# which is what the claude.ai connector already does.
+		# server offers no SSE stream); clients must fall back to
+		# POST-only, which is what the claude.ai connector already does.
 		@mail-bearer header Authorization "Bearer {$MCP_TOKEN_MAIL}"
 		handle @mail-bearer {
-			rewrite / /mcp
-			rewrite /mcp/ /mcp
-			reverse_proxy mail-mcp:8080 {
-				header_up Host localhost:8080
-			}
+			import mcp_proxy_subpath mail-mcp 8080
 		}
 
 		handle {
-			jwtauth {
-				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
-				issuer_whitelist https://auth.nickawilliams.com/
-				# One canonical audience — see the graphiti block above.
-				audience_whitelist https://mail.mcp.nickawilliams.com/
-			}
-			rewrite / /mcp
-			rewrite /mcp/ /mcp
-			reverse_proxy mail-mcp:8080 {
-				header_up Host localhost:8080
-			}
+			import mcp_jwt_gate mail
+			import mcp_proxy_subpath mail-mcp 8080
 		}
 	}
 
 	@ebay host ebay.mcp.nickawilliams.com
 	handle @ebay {
-		# Trailing slash on `resource` — see the graphiti block above. This
-		# is where that was proven: flipping it here alone, with the
-		# claude.ai connector URL left unchanged, moved claude.ai's next
-		# authorization onto the slashed audience.
-		handle /.well-known/oauth-protected-resource {
-			header Content-Type application/json
-			respond `{"resource":"https://ebay.mcp.nickawilliams.com/","authorization_servers":["https://auth.nickawilliams.com/"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
-		}
+		# The trailing slash on the metadata `resource` was proven here:
+		# flipping it on ebay alone, with the claude.ai connector URL
+		# left unchanged, moved claude.ai's next authorization onto the
+		# slashed audience. See (mcp_public) above.
+		import mcp_public ebay
 
-		# Brand icons — see the graphiti block above for why these paths
-		# sit in front of auth.
-		@ebay-icons path /favicon.ico /icon.svg /icon-*.png
-		handle @ebay-icons {
-			root * /etc/caddy/icons/ebay
-			header Cache-Control "public, max-age=86400"
-			file_server
-		}
-
-		# ebay-mcp serves its MCP endpoint at / (not /mcp), so no rewrite —
-		# just collapse a stray /mcp back onto the root. Its express app also
-		# skips the SDK's DNS-rebinding guard, so no Host header override is
-		# needed either.
-		#
-		# Like supergateway (see the mail block), ebay-mcp answers
-		# evicted/unknown MCP sessions with 400 where the spec requires 404 —
-		# and only 404 tells clients to re-initialize, so a 400 wedges the
-		# conversation. The blanket 400→404 mapping is slightly coarser here:
-		# the SDK transport can also 400 a malformed body, which would read
-		# back as a dead session — an extra re-initialize, not a wedge.
+		# ebay-mcp serves its MCP endpoint at / (not /mcp), and its
+		# express app skips the SDK's DNS-rebinding guard, so it needs
+		# neither the /mcp rewrite nor a Host override — but it does
+		# need the dead-session translation.
 		@ebay-bearer header Authorization "Bearer {$MCP_TOKEN_EBAY}"
 		handle @ebay-bearer {
-			rewrite /mcp /
-			rewrite /mcp/ /
-			reverse_proxy ebay-mcp:8081 {
-				@dead_session status 400
-				handle_response @dead_session {
-					header Content-Type application/json
-					respond `{"jsonrpc":"2.0","error":{"code":-32001,"message":"Session not found"},"id":null}` 404
-				}
-			}
+			import mcp_proxy_root_sessions ebay-mcp 8081
 		}
 
 		handle {
-			jwtauth {
-				jwk_url https://auth.nickawilliams.com/.well-known/jwks.json
-				issuer_whitelist https://auth.nickawilliams.com/
-				# One canonical audience — see the graphiti block above.
-				audience_whitelist https://ebay.mcp.nickawilliams.com/
-			}
-			rewrite /mcp /
-			rewrite /mcp/ /
-			reverse_proxy ebay-mcp:8081 {
-				# Same 400→404 session translation as the bearer path above.
-				@dead_session status 400
-				handle_response @dead_session {
-					header Content-Type application/json
-					respond `{"jsonrpc":"2.0","error":{"code":-32001,"message":"Session not found"},"id":null}` 404
-				}
-			}
+			import mcp_jwt_gate ebay
+			import mcp_proxy_root_sessions ebay-mcp 8081
 		}
 	}
 
