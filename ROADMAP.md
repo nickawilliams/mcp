@@ -284,18 +284,28 @@ does **not** live in this repo — it arrives as an external image dependency
   Escalate to a real migration if the cap blocks a registration, if Auth0
   ships JiT CIMD without fixing entity materialization (see the note above),
   or if ChatGPT's per-connector behavior turns out to be per *user*.
-- **Audience canonicalization split (2026-08-11)**: clients disagree on the
-  RFC 8707 `resource` form for a bare-origin server. claude.ai and ChatGPT
-  send the configured URL verbatim (`https://mail.mcp.nickawilliams.com`,
-  matching the PRM `resource`); Claude Code sends the WHATWG-normalized form
-  with a trailing slash (a JS `URL` of an origin always has path `/`), which
-  the tenant's resource compatibility profile exact-matches against resource
-  server identifiers — so Claude Code failed with
-  `access_denied: Service not found: <url>/`. Identifiers are immutable and
-  the unslashed one has live grants, so each service now registers *both*
-  identifier forms (`service` + `service_slashed` in the mail/graphiti
-  modules) and Caddy whitelists both audiences. Retire the slashed pair if
-  clients ever converge on the verbatim form.
+- **Audience canonicalization split (2026-08-11, resolved 2026-08-22)**:
+  clients disagree on the RFC 8707 `resource` form for a bare-origin server.
+  claude.ai and ChatGPT send the configured URL verbatim
+  (`https://mail.mcp.nickawilliams.com`, matching the PRM `resource`); Claude
+  Code sends the WHATWG-normalized form with a trailing slash (a JS `URL` of
+  an origin always has path `/`), which the tenant's resource compatibility
+  profile exact-matches against resource server identifiers — so Claude Code
+  failed with `access_denied: Service not found: <url>/`. Identifiers are
+  immutable, so each service ran *both* forms for a while, costing two of the
+  free plan's ten resource servers apiece.
+
+  **Collapsed to one form on 2026-08-22.** claude.ai turns out to take its
+  audience from the PRM `resource` field Caddy serves, not from its connector
+  URL — proven by flipping that field on ebay alone and watching the next
+  authorization follow, connector URL unchanged. Pointing the metadata at the
+  slashed form therefore moves every client family onto it, so each service
+  now registers a single `auth0_resource_server` (`service`, in
+  `terraform/modules/service/`) carrying the slashed identifier, and Caddy
+  whitelists that one audience. The bare form was withdrawn rather than left
+  in place as a second accepted audience: a client holding a stale
+  bare-audience token would never 401, so it would never re-read the metadata
+  — which is what stalled the migration until the bare form was gone.
 - **Need**: support the OAuth-only clients (claude.ai web connectors for individual
   accounts, ChatGPT) in addition to the header-capable dev tools.
 - **v1 limitation**: a single endpoint can't cleanly serve both — if it advertises
