@@ -55,8 +55,8 @@ The dependency arrow only points inward: `[ infrastructure/common ] <-- [ mcp ]`
 ## Layout
 
 The repo is partitioned by concern: `terraform/` is all IaC — a root platform
-module (host, DNS, secrets) plus one single-use module per service — and
-`services/<name>/` is a service's runtime payload and docs. The repo root IS
+module (host, DNS, secrets) plus one shared module instantiated once per
+service — and `services/<name>/` is a service's runtime payload and docs. The repo root IS
 `/opt/mcp` on the host (a git checkout), so every tracked path is already at
 its delivered location. Future non-IaC codebases (e.g. an MCP gateway) slot
 in as new top-level directories.
@@ -85,9 +85,10 @@ mcp/
 │       └── docs/          #   payload docs (client instruction block, etc.)
 ├── terraform/             # root platform module (host, DNS, secrets)
 │   ├── services.tf        #   service manifest: one module block per service
+│   ├── graphiti.tf        #   a service's bespoke resources, when it has any
 │   └── modules/
-│       └── graphiti/      #   per-service module: registry identity, token,
-│                          #   DNS, service-specific extras
+│       └── service/       #   the surface every service has: registry
+│                          #   identity, token, DNS, resource server, secrets
 ├── Makefile               # ops wrapper (op run + terraform; ssm/logs/deploy)
 ├── .env                   # 1Password op:// refs, gitignored (see Credentials)
 └── README.md
@@ -153,13 +154,21 @@ provider plumbing (checkout, registry login, runners). See `AGENTS.md`.
    new snippet if the upstream fits neither proxy shape. If the service has
    persistent data, add its dir to the `mkdir -p data/...` line in
    `scripts/refresh.sh`.
-3. Create `terraform/modules/<name>/` — copy `modules/graphiti/` as the
-   scaffold and adjust: the registry identity (subdomain), the token param
-   basename, and any service-specific extras (API keys, SSM secrets). The
-   scaffold already yields the DNS record and the bearer token. Secret
-   basenames must be unique across services (they share the host's `.env`).
-4. Register it: a `module "<name>"` block in `terraform/services.tf` and
-   entries in the `services` / `service_tokens` maps in `terraform/locals.tf`.
+3. Add a `module "<name>"` block to `terraform/services.tf` pointed at
+   `./modules/service`, and entries in the `services` / `service_tokens` maps
+   in `terraform/locals.tf`. That module yields the DNS record, the bearer
+   token, and the Auth0 resource server on its own; the only per-service
+   input beyond `name` is secrets — `secrets` for values you supply,
+   `generated_secrets` for ones terraform should mint. Both are keyed by the
+   env var name the value becomes on the host, and those basenames must be
+   unique across **all** services, since `refresh.sh` flattens every secret
+   into one `.env`.
+4. Only if the service needs a resource the shared module has no notion of —
+   an upstream SaaS credential with its own provider — add
+   `terraform/<name>.tf` for it and feed its value back through the module's
+   `secrets` (see `graphiti.tf`, the one service that needs this). Most
+   services skip this step entirely and get no terraform directory of their
+   own.
 5. Drop the service's brand mark — the mark alone, no wordmark or plate — at
    `services/<name>/logo.svg`, painted in the brand colour and kept to a single
    hex (that colour is never drawn; it is what the tile gradient is derived
@@ -174,8 +183,9 @@ provider plumbing (checkout, registry login, runners). See `AGENTS.md`.
    itself consumes or serves, not operator docs.
 7. `make plan && make apply`, then commit + push + `make deploy`.
 
-Removing a service is the inverse: delete both directories and the manifest,
-compose, and Caddyfile entries; the module's resources (token param, DNS)
+Removing a service is the inverse: delete `services/<name>/`, its
+`terraform/<name>.tf` if it had one, and the manifest, compose, and Caddyfile
+entries; the module's resources (token param, DNS, resource server, secrets)
 retire with it. Its generated icons are the one thing that does not live in
 either directory — `make icons` writes them to `caddy/icons/<name>/` because
 that tree is what Caddy has mounted, so delete that too.

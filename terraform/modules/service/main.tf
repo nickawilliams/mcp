@@ -1,24 +1,27 @@
-# mail — multi-account IMAP/SMTP MCP service (tecnologicachile/mail-mcp
-# behind an in-container supergateway stdio->HTTP bridge).
-# Owns everything keyed by this service: its registry identity (exported for
-# the platform's aggregation), bearer token, DNS record, and service-specific
-# extras (one password per mail account). Platform singletons (host, Caddy)
-# live in the root module, which wires in the shared context via this
-# module's variables. Files (compose, Dockerfile) reach the host via the git
-# checkout — services/mail/ — not via terraform.
+# The platform surface every MCP service has, instantiated once per service
+# from services.tf. A service is its registry identity (exported for the
+# platform's aggregation), a bearer token, a DNS record, an Auth0 resource
+# server, and some number of SSM secrets — this module owns all of it, so a
+# service that needs nothing else needs no terraform of its own.
+#
+# Genuinely bespoke resources (an upstream SaaS credential, say) stay in the
+# root module in that service's own .tf file, and feed their secret values
+# back in through `secrets`. Platform singletons (host, Caddy) live in the
+# root module too, which wires the shared context in via this module's
+# variables. Files (compose, config) reach the host via the git checkout —
+# services/<name>/ — not via terraform.
 
 locals {
-  # Registry identity — must agree with this service's compose.yaml and its
+  # Registry identity — must agree with the service's compose.yaml and its
   # vhost block in caddy/Caddyfile.
   service = {
-    subdomain = "mail"
+    subdomain = var.name
   }
 
-  # The managed account set is defined by the caller's map keys. for_each
-  # may not range over a sensitive map, so the ids are unwrapped — the ids
-  # themselves aren't secret, only the password values are (and those stay
+  # for_each may not range over a sensitive map, so the names are unwrapped.
+  # The names themselves aren't secret, only the values are (and those stay
   # sensitive).
-  account_ids = toset(nonsensitive(keys(var.account_passwords)))
+  secret_names = toset(nonsensitive(keys(var.secrets)))
 }
 
 resource "random_password" "bearer" {
@@ -36,26 +39,42 @@ resource "aws_route53_record" "service" {
 
 # The token rides the secrets path so refresh.sh lands it in the host .env,
 # where compose hands it to Caddy for this service's vhost gate
-# ({$MCP_TOKEN_MAIL} in caddy/Caddyfile). Secret basenames must be unique
-# across services (refresh.sh flattens all of /secrets/* into the host's
-# single .env).
+# ({$MCP_TOKEN_<NAME>} in caddy/Caddyfile).
 resource "aws_ssm_parameter" "token" {
-  name  = "/${var.path_prefix}/secrets/MCP_TOKEN_MAIL"
+  name  = "/${var.path_prefix}/secrets/MCP_TOKEN_${upper(var.name)}"
   type  = "SecureString"
   value = random_password.bearer.result
 }
 
-# Service-specific extras
+# Service secrets
 # ==============================================================================
-# One SecureString per account password; basenames (MAIL_<ID>_PASSWORD)
-# unique repo-wide. Compose fans each out to the app's IMAP+SMTP pair.
+# Two kinds, both landing in the same place: values the caller supplies, and
+# values terraform generates because nothing outside this stack needs to know
+# them. Both are keyed by the env var name they become — refresh.sh flattens
+# all of /secrets/* into the host's single .env using the last path segment,
+# so basenames must be unique across every service, not just within one.
 
-resource "aws_ssm_parameter" "account_password" {
-  for_each = local.account_ids
+resource "aws_ssm_parameter" "secret" {
+  for_each = local.secret_names
 
-  name  = "/${var.path_prefix}/secrets/MAIL_${upper(each.key)}_PASSWORD"
+  name  = "/${var.path_prefix}/secrets/${each.key}"
   type  = "SecureString"
-  value = var.account_passwords[each.key]
+  value = var.secrets[each.key]
+}
+
+resource "random_password" "generated" {
+  for_each = var.generated_secrets
+
+  length  = each.value
+  special = false
+}
+
+resource "aws_ssm_parameter" "generated" {
+  for_each = var.generated_secrets
+
+  name  = "/${var.path_prefix}/secrets/${each.key}"
+  type  = "SecureString"
+  value = random_password.generated[each.key].result
 }
 
 # OAuth audience (C4)
