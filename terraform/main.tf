@@ -61,6 +61,14 @@ resource "aws_security_group" "host" {
   description = "MCP host: public HTTPS via Caddy only"
   vpc_id      = aws_vpc.main.id
 
+  # `name` is ForceNew, and this group is attached to a running instance, so
+  # the default destroy-then-create loses to DependencyViolation. Renaming is
+  # rare, but when it happens (a change of partition, say) this is what keeps
+  # it from being an outage.
+  lifecycle {
+    create_before_destroy = true
+  }
+
   tags = {
     Name = "${local.name_prefix}-host"
   }
@@ -108,6 +116,12 @@ resource "aws_iam_role" "host" {
       Action    = "sts:AssumeRole"
     }]
   })
+
+  # Same reasoning as the security group: `name` is ForceNew, and a role
+  # cannot be deleted while it is still held by an instance profile.
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_iam_role_policy_attachment" "ssm_core" {
@@ -177,6 +191,13 @@ resource "aws_iam_role_policy" "route53_dns01" {
 resource "aws_iam_instance_profile" "host" {
   name = "${local.name_prefix}-host"
   role = aws_iam_role.host.name
+
+  # A profile cannot be deleted while it is associated with an instance, and
+  # the instance is the only way onto this host (no SSH — access is SSM
+  # Session Manager, which needs the role this profile carries).
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 # Compute

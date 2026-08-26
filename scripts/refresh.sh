@@ -17,7 +17,7 @@ REGION="${MCP_REGION:-us-west-1}"
 # user_data, and `make deploy` passes it from `terraform output -raw
 # path_prefix`. The literal below is only a last-resort fallback for a manual
 # run on the host, and will be stale the moment the stack's partition changes.
-PREFIX="${MCP_PREFIX:-common/mcp}"
+PREFIX="${MCP_PREFIX:-prod/mcp}"
 APP_DIR="${MCP_APP_DIR:-/opt/mcp}"
 
 cd "${APP_DIR}"

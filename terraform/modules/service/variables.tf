@@ -9,7 +9,7 @@ variable "name" {
 }
 
 variable "path_prefix" {
-  description = "SSM path prefix for the stack (e.g. common/mcp)"
+  description = "SSM path prefix for the stack (e.g. prod/mcp)"
   type        = string
 }
 

@@ -4,10 +4,19 @@ variable "aws_region" {
   default     = "us-west-1"
 }
 
-variable "environment" {
-  description = "Deployment environment (single-instance: always common)"
+# `common` is deliberately not a legal value. It is the partition for what the
+# environment axis does not partition — registrations, root zones, the Auth0
+# tenant — and this stack is a production workload, not one of those. See
+# infrastructure/docs/environments.md.
+variable "target_environment" {
+  description = "Deployment tier for every resource in this root"
   type        = string
-  default     = "common"
+  default     = "prod"
+
+  validation {
+    condition     = can(regex("^(dev|stage|prod)$", var.target_environment))
+    error_message = "target_environment must be one of: dev, stage, prod."
+  }
 }
 
 variable "application_name" {
@@ -20,6 +29,17 @@ variable "domain_primary" {
   description = "Primary Domain (root zone owned by the infrastructure core)"
   type        = string
   default     = "nickawilliams.com"
+}
+
+# Non-production tiers live on their own registered domain rather than under
+# a subdomain of the primary, so that a non-prod host cannot set cookies the
+# production site honours and does not count as same-site for CSRF purposes —
+# browsers draw that boundary at the registrable domain. Not yet registered;
+# referenced only by the non-prod branch of local.mcp_domain.
+variable "domain_nonprod" {
+  description = "Registered domain hosting non-production tiers"
+  type        = string
+  default     = "nickawilliams.dev"
 }
 
 variable "op_service_account_token" {

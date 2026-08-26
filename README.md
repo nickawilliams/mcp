@@ -39,7 +39,7 @@ Caddy writes a structured access log (audit trail) to docker logs.
 - **Delivery**: git is the source of truth for files — the host's `/opt/mcp`
   is a checkout of this (public) repo, advanced by `make deploy` (fetch +
   `reset --hard origin/main`, then `scripts/refresh.sh`). Terraform delivers
-  only what it owns: AWS resources and secrets (SSM `/common/mcp/secrets/*`,
+  only what it owns: AWS resources and secrets (SSM `/prod/mcp/secrets/*`,
   flattened into the host `.env` by refresh.sh). Untracked runtime content
   (`data/`, `.env`) lives alongside the checkout.
 
@@ -94,9 +94,14 @@ mcp/
 └── README.md
 ```
 
-- **State key**: `525999333867/us-west-1/nickawilliams/common/mcp/terraform.tfstate`
-  in the `terraform-state-nickawilliams` bucket (S3-native locking).
-- **Resource naming**: `common-mcp-<resource>`. **SSM paths**: `/common/mcp/secrets/*`.
+- **State key**: `525999333867/us-west-1/nickawilliams/prod/mcp/terraform.tfstate`
+  in the `terraform-state-nickawilliams` bucket (S3-native locking). The
+  partition slot is `prod`: this is a production workload, and `common` is
+  reserved for what the environment axis does not partition (see
+  `infrastructure/docs/environments.md`).
+- **Resource naming**: `prod-mcp-<resource>`. **SSM paths**: `/prod/mcp/secrets/*`.
+  Both derive from `var.target_environment`, which rejects any value but
+  `dev`, `stage`, or `prod`.
 
 ## Credentials
 

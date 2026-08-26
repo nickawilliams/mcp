@@ -4,7 +4,7 @@ provider "aws" {
   default_tags {
     tags = {
       Scope       = "nickawilliams"
-      Environment = "common"
+      Environment = var.target_environment
       Repository  = "mcp"
       Owner       = "terraform:mcp"
       Terraform   = "true"

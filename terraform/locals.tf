@@ -42,9 +42,21 @@ data "aws_ami" "al2023" {
 
 locals {
   common      = data.terraform_remote_state.common.outputs
-  name_prefix = "${var.environment}-${var.application_name}" # common-mcp
-  path_prefix = replace(local.name_prefix, "-", "/")         # common/mcp (SSM paths)
-  mcp_domain  = "mcp.${var.domain_primary}"
+  name_prefix = "${var.target_environment}-${var.application_name}" # prod-mcp
+  path_prefix = replace(local.name_prefix, "-", "/")                # prod/mcp (SSM paths)
+
+  # Production is unqualified — a name with no environment in it is the live
+  # one — which is what keeps mcp.nickawilliams.com stable however many tiers
+  # appear later. That stability is load-bearing rather than cosmetic: the
+  # Auth0 resource server identifiers in modules/service derive their audience
+  # from this domain, and the registered claude.ai and ChatGPT CIMD clients
+  # are bound to those exact strings. A non-prod tier gets a name under its
+  # own registered domain instead, never under the primary.
+  mcp_domain = (
+    var.target_environment == "prod"
+    ? "mcp.${var.domain_primary}"
+    : "mcp.${var.target_environment}.${var.domain_nonprod}"
+  )
 
   # Aggregated service registry. Each service module (see services.tf) owns
   # its identity and exports it here; platform-shared derivations (service

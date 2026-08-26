@@ -17,7 +17,7 @@ locals {
     metadata = {
       field_map = {
         scope       = { value = "nickawilliams" }
-        environment = { value = "common" }
+        environment = { value = var.target_environment }
         repository  = { value = "mcp" }
         owner       = { value = "terraform:mcp" }
       }
