@@ -346,6 +346,83 @@ does **not** live in this repo — it arrives as an external image dependency
   that each claim carries how it was verified. Then delete the spike vhost,
   its DNS record, and the Stytch spike app, so a half-configured second
   issuer is not left standing.
+
+  **Spike run 2026-08-25 — partial, and blocked on a gap the plan did not
+  anticipate.** Three of observation (a)'s four bullets answered; (b) and (c)
+  untouched. Run against the live Consumer project `project-live-5c01e792…`
+  (unique name `chlorinated-nerve-9228`) created 2026-08-24, with a workspace
+  management key driving project reads and the project secret driving the
+  probe.
+
+  **The plan's setup step is wrong.** It assumed the spike host could front
+  "any existing backend or the 2026-08-07 probe server". That holds for Auth0
+  only because Universal Login hosts login and consent for us; Stytch does
+  not. The application hosts the authorization endpoint. Verified four ways:
+  the Connected Apps overview ("your app is responsible for hosting the
+  Authorization Endpoint"), the getting-started and existing-auth-system
+  guides (both naming `${yourDomain}/oauth/authorize`), and the dashboard's
+  own field help — "Location in your web app where the `<IdentityProvider>`
+  component is hosted". No hosted alternative exists in the product as
+  configured. This is a fourth fit criterion the 2026-08-24 assessment never
+  weighed: Stytch is built for developers embedding auth in a product whose
+  consent screen is their own surface, whereas we consume identity the way an
+  enterprise buys SSO and want the vendor to host everything.
+
+  Practically the lift is smaller than it sounds — `<IdentityProvider />` is a
+  frontend-SDK React component talking to Stytch from the browser, so Caddy
+  could serve a static bundle from a vhost with no new process. Stytch still
+  owns the user store, the auth methods and sessions; what moves to us is
+  hosting the pages their components render on. The recurring comparison is
+  therefore Auth0 Essentials ($35/mo, cap 10 → 100, materialization deferred
+  rather than solved) against Stytch free ($0, no cap at all) plus a static
+  page whose marginal cost on existing infrastructure is zero.
+
+  **(a) DCR deduplication — confirmed, with controls.** Nine registrations
+  against `…/v1/oauth2/register` produced five entities, then zero after
+  cleanup. Identical metadata submitted twice returned one `client_id`; a
+  changed `client_name` minted a second, which is the control proving
+  registration does mint; a changed redirect *path* minted a third, correctly.
+  Dedup keys on the whole metadata document, not on the client name.
+
+  **(a) RFC 8252 loopback normalization — confirmed, and decisive.** Ports
+  51234/51235/51236 collapsed to a single `client_id`, and a portless client
+  deduped across attempts. That is exactly the debris mode that produced the
+  two dead Cursor clients on Auth0, absorbed natively — where
+  `scripts/auth0-gc.sh` carries an entire normalization pass setting
+  `app_type=native` that exists only to make Auth0 behave the same way.
+
+  **CIMD is advertised**, and there is a trap in how you check. RFC 8414
+  metadata on the project domain carries
+  `client_id_metadata_document_supported: true`, but the management API's
+  `live_idp_cimd_enabled` still reads `false` with the toggle on and the flag
+  live — so that field is not trustworthy for a scripted check; read the
+  discovery document. The two discovery documents also disagree:
+  `api.stytch.com/…/openid-configuration` omits `registration_endpoint` and
+  reports a schemeless `issuer: stytch.com/project-live-…`, while the project
+  domain's `/.well-known/oauth-authorization-server` carries both correctly
+  and is the one MCP clients read.
+
+  **Issuer looks portable**, which is what (b) needs: RFC 8414 reports
+  `issuer: https://chlorinated-nerve-9228.customers.stytch.com`, a real origin
+  that a custom domain would replace. RS256 confirmed on the JWKS. RFC 8707 is
+  *not* advertised in the metadata — unconfirmed either way, still to be
+  settled by decoding a real token.
+
+  **Still unverified: the load-bearing claim.** Whether a CIMD authorization
+  accrues a persistent client entity. CIMD entities would materialize at
+  authorization time rather than at registration, so it cannot be reached
+  without the hosted authorize page and a Stytch user. Every other part of the
+  migration rationale is now evidence-backed; this one is not, and it is the
+  one the rationale rests on.
+
+  **State left standing.** The project has DCR and CIMD enabled and its
+  authorization URL set to a `spike.mcp.nickawilliams.com` path that does not
+  resolve — no DNS record, no vhost, and no client holds the issuer, so it is
+  inert but not torn down. The 1Password item
+  `Infrastructure/stytch-project-mcp-spike` (project secret plus workspace
+  management key) and the `STYTCH_*` block in `.env` are likewise throwaway
+  and listed in that item's note. The probe script was deliberately kept out
+  of the repo.
 - **Audience canonicalization split (2026-08-11, resolved 2026-08-22)**:
   clients disagree on the RFC 8707 `resource` form for a bare-origin server.
   claude.ai and ChatGPT send the configured URL verbatim
