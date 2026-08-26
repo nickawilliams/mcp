@@ -423,6 +423,22 @@ does **not** live in this repo — it arrives as an external image dependency
   management key) and the `STYTCH_*` block in `.env` are likewise throwaway
   and listed in that item's note. The probe script was deliberately kept out
   of the repo.
+- **GC grace window never expires (2026-08-25)**: `scripts/auth0-gc.sh` pass 2
+  defers any DCR client that has tenant-log activity, but tests only for
+  *existence* of a log row (`per_page=1`, then `length > 0`) rather than for
+  recency. The ChatGPT DCR client `tpc_51No…` last showed activity on
+  2026-08-08 and was still being deferred seventeen days later, so the
+  script's own promise — "a truly dead registration goes quiet and is
+  collected on the next" run — does not hold for it. Fix is to compare the
+  newest log `date` against a window instead of counting rows. Context: that
+  client is superseded debris rather than an in-flight flow, since ChatGPT has
+  moved to CIMD (`tpc_mUge…`, active 2026-08-24) and the DCR entry holds zero
+  grants. Tenant went 10/10 → 8/10 on 2026-08-25 when GC reclaimed the two
+  dead Cursor clients (`tpc_hX2m…`, `tpc_6CzA…`); one of the remaining eight
+  is this stale registration, so a working window would take it to 7/10. The
+  10/10 reading also corrects the "8 of 10" recorded in the Stytch verdict
+  above — the cap was momentarily full, one registration away from escalation
+  trigger 1, rather than comfortably distant.
 - **Audience canonicalization split (2026-08-11, resolved 2026-08-22)**:
   clients disagree on the RFC 8707 `resource` form for a bare-origin server.
   claude.ai and ChatGPT send the configured URL verbatim
