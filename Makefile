@@ -71,17 +71,23 @@ logs:
 # from SSM and reconcile compose (services restart only if their config
 # changed). Files deploy via git push + this target; `make apply` is only
 # needed when AWS resources or secrets changed.
+#
+# MCP_PREFIX is passed from terraform output rather than left to the fallback
+# literal in refresh.sh, so the path the host reads and the path terraform
+# wrote can never disagree — including across a change of partition, where
+# they otherwise would for exactly as long as the two were out of step.
 
 ## Sync the host with the pushed repo + SSM secrets and reconcile compose
 deploy:
 	@if [ "$$(git rev-parse HEAD)" != "$$(git rev-parse origin/main)" ]; then \
 		echo "warning: HEAD != origin/main — unpushed work will not deploy" >&2; \
 	fi; \
+	prefix=$$($(TF) output -raw path_prefix); \
 	cmd_id=$$(aws ssm send-command \
 		--targets "Key=InstanceIds,Values=$(INSTANCE)" \
 		--document-name "AWS-RunShellScript" \
 		--comment "mcp deploy: pull repo + refresh secrets" \
-		--parameters 'commands=["git -C /opt/mcp fetch origin","git -C /opt/mcp reset --hard origin/main","bash /opt/mcp/scripts/refresh.sh"]' \
+		--parameters "commands=[\"git -C /opt/mcp fetch origin\",\"git -C /opt/mcp reset --hard origin/main\",\"MCP_PREFIX=$$prefix bash /opt/mcp/scripts/refresh.sh\"]" \
 		--query Command.CommandId --output text); \
 	echo "deploy: $$cmd_id (waiting...)"; \
 	aws ssm wait command-executed --command-id "$$cmd_id" --instance-id "$(INSTANCE)" || true; \

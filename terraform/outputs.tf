@@ -23,3 +23,8 @@ output "zone_id" {
   description = "mcp.nickawilliams.com hosted zone id (this stack's hook for future services)"
   value       = aws_route53_zone.mcp.zone_id
 }
+
+output "path_prefix" {
+  description = "SSM path prefix for this stack's secrets; the host's MCP_PREFIX"
+  value       = local.path_prefix
+}
