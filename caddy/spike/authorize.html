@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>MCP spike — authorize</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  body { font: 15px/1.5 system-ui, sans-serif; max-width: 30rem;
+         margin: 3rem auto; padding: 0 1rem; }
+  fieldset { border: 1px solid #ccc; border-radius: 6px; }
+  label { display: block; margin: .6rem 0 .2rem; }
+  input { width: 100%; padding: .4rem; box-sizing: border-box; }
+  button { margin-top: .8rem; padding: .4rem 1rem; }
+  #status { white-space: pre-wrap; color: #666; margin-top: 1rem;
+            font-family: ui-monospace, monospace; font-size: 13px; }
+</style>
+
+<h1>MCP Stytch spike</h1>
+<p>Throwaway authorization endpoint. Delete with the rest of the spike.</p>
+
+<div id="login" hidden>
+  <fieldset>
+    <legend>Sign in</legend>
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="username">
+    <label for="password">Password</label>
+    <input id="password" type="password" autocomplete="current-password">
+    <button id="go">Sign in</button>
+  </fieldset>
+</div>
+
+<stytch-identity-provider id="idp" hidden></stytch-identity-provider>
+<div id="status"></div>
+
+<script type="module">
+  import { createStytchClient, StytchIdentityProvider }
+    from 'https://esm.sh/@stytch/vanilla-js';
+
+  const PUBLIC_TOKEN = 'public-token-live-1e5b3a6b-e87a-4e49-8e2c-4a8d1e878e25';
+  const status = (m) => { document.getElementById('status').textContent = m; };
+
+  let stytch;
+  try {
+    stytch = createStytchClient(PUBLIC_TOKEN);
+  } catch (e) {
+    status('client init failed: ' + e.message);
+    throw e;
+  }
+
+  customElements.define('stytch-identity-provider', StytchIdentityProvider);
+
+  function render() {
+    const user = stytch.user.getSync();
+    const loggedIn = Boolean(user);
+    document.getElementById('login').hidden = loggedIn;
+    document.getElementById('idp').hidden = !loggedIn;
+
+    if (loggedIn) {
+      status('signed in as ' + (user.emails?.[0]?.email ?? user.user_id) +
+             ' — rendering consent for: ' + location.search);
+      document.getElementById('idp').render({ client: stytch });
+    } else {
+      status('not signed in');
+    }
+  }
+
+  document.getElementById('go').addEventListener('click', async () => {
+    status('signing in…');
+    try {
+      await stytch.passwords.authenticate({
+        email: document.getElementById('email').value,
+        password: document.getElementById('password').value,
+        session_duration_minutes: 60,
+      });
+      render();
+    } catch (e) {
+      status('sign-in failed: ' + (e?.error_message || e.message || String(e)));
+    }
+  });
+
+  render();
+</script>

@@ -212,6 +212,47 @@
 		}
 	}
 
+	# --- Stytch spike (2026-08-26, THROWAWAY — see ROADMAP.md) -----------
+	# A deliberate copy of (mcp_public) and (mcp_jwt_gate) rather than a
+	# parameterization of them: both hardcode Auth0's issuer and JWKS, and
+	# widening them for an experiment that gets deleted would outlive it.
+	# Delete this whole block, caddy/spike/, and the DNS record at teardown.
+	@spike host spike.mcp.nickawilliams.com
+	handle @spike {
+		# Same slashed `resource` production serves, but pointing at Stytch
+		# as the authorization server instead of Auth0. Whether a token minted
+		# for this resource comes back with this exact audience is the whole
+		# question observation (b) asks.
+		handle /.well-known/oauth-protected-resource {
+			header Content-Type application/json
+			respond `{"resource":"https://spike.mcp.nickawilliams.com/","authorization_servers":["https://chlorinated-nerve-9228.customers.stytch.com"],"bearer_methods_supported":["header"],"scopes_supported":["offline_access"]}` 200
+		}
+
+		# The authorization endpoint Stytch requires the application to host
+		# — login plus consent. Unauthenticated by necessity: this is what
+		# mints the token, so nothing here can be behind the gate.
+		@spike-ui path /oauth/authorize /oauth/authorize/* /login /login/*
+		handle @spike-ui {
+			root * /etc/caddy/spike
+			rewrite * /authorize.html
+			file_server
+		}
+
+		# Everything else behind a Stytch JWT gate. It answers rather than
+		# proxying to a real backend: the spike only needs to observe whether
+		# the audience Stytch mints satisfies a per-service whitelist, and
+		# 200-vs-401 is that signal. Clients will fail the MCP handshake
+		# afterwards, which is expected and not what is being measured.
+		handle {
+			jwtauth {
+				jwk_url https://chlorinated-nerve-9228.customers.stytch.com/.well-known/jwks.json
+				issuer_whitelist https://chlorinated-nerve-9228.customers.stytch.com
+				audience_whitelist https://spike.mcp.nickawilliams.com/
+			}
+			respond "spike: token accepted" 200
+		}
+	}
+
 	# Unmatched subdomains: no OAuth metadata, just 404.
 	handle {
 		respond "Not Found" 404
