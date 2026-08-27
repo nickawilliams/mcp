@@ -485,6 +485,76 @@ does **not** live in this repo — it arrives as an external image dependency
   authorized domain, the `Infrastructure/stytch-project-mcp-spike` 1Password
   item, and the `STYTCH_*` block in `.env`. The probe script was never
   committed.
+- **Self-hosting the authorization server (2026-08-27)**: raised after the
+  Stytch verdict, since the blocker there was a vendor's audience model rather
+  than anything intrinsic. Two libraries were considered.
+
+  **Auth.js is the wrong category** — record it so nobody re-investigates. It
+  is a *relying party*: it signs users in against Google, GitHub, Auth0,
+  Keycloak. No token issuance to third-party clients, no dynamic registration,
+  no authorization server metadata. It would be a client of our issuer, not a
+  replacement for it.
+
+  **Better Auth clears the hard criterion, and at zero licence cost** — the
+  first option in this whole thread to do so. `@better-auth/oauth-provider`
+  is a full OAuth 2.1 authorization server; `@better-auth/mcp` is built for
+  this exact shape. Its docs describe `resource` as "the HTTPS protected
+  resource identifier that MCP clients request and access tokens carry as the
+  `aud` claim" — precisely what Stytch could not do. It also serves RFC 9728
+  metadata automatically, supports DCR with per-client resource access enforced
+  by default, exposes JWKS for the offline validation our Caddy gate depends
+  on, ships a device-authorization flow for CLIs, and tracks the MCP 2026-07-28
+  profile. Its 1.7 model is *more* granular than Auth0's: "Audiences have been
+  replaced by resources, allowing each resource to define its own token
+  lifetime, scopes, claims, and signing keys." Per-resource signing keys is a
+  stronger boundary than we have today. No entity caps, because the clients
+  live in our own database.
+
+  **Deferred on host placement, not capability** — the distinction matters,
+  because placement is the thing that can change. Better Auth is a library, not
+  a service: it needs a running Node process and a datastore for users,
+  sessions and clients. Putting that on the MCP host would *remove the bulkhead
+  the audience model exists to defend*. Today, compromising the box yields the
+  services but not the ability to mint tokens, because the signing keys live at
+  Auth0. Self-hosted alongside the services, those two failures collapse into
+  one: host compromise becomes "issue myself a token for anything, forever" —
+  strictly worse than the token-replay case that justified per-service
+  audiences in the first place. Hosting it on a separate box preserves the
+  boundary but adds a host to run and pay for, which consumes the $420/yr the
+  move was meant to save.
+
+  **Revisit if** the health/PHI service lands in its own trust domain (that
+  would create a natural home for an issuer outside the MCP blast radius), or
+  if Auth0 pricing moves. The reasoning here is placement and operational
+  blast radius, not fit — Better Auth is the thing to reach for if we ever do
+  leave.
+- **Essentials limits confirmed, and the AI add-on is the wrong arrow
+  (2026-08-27)**: checked before buying, since the 10 -> 100 figure above came
+  from a desk read rather than a source. Auth0's Entity Limit Policy gives
+  Applications *and* API resource servers as 10 on Free, **100 on self-service
+  (Essentials/Professional)**, 100,000 on Enterprise. Hard limits; only
+  Enterprise may request increases. So the purchase does what we expect, plus
+  something not previously noted: **the resource-server ceiling lifts too**.
+  That was a latent constraint — during the 2026-08-11 trailing-slash period
+  each service ran two resource servers, so a fifth service would have hit 10
+  on that axis independently of the application cap.
+
+  **Skip the `Auth0 for AI Agents` add-on.** It points the opposite way from
+  our architecture: Token Vault (RFC 8693 exchange holding a user's
+  Google/Slack/GitHub refresh tokens), async authorization, and FGA for RAG all
+  serve *an agent calling out to third-party APIs*. Ours is inbound — MCP
+  clients authenticating against resources we own — and Auth0's docs say
+  plainly it is "not for securing inbound MCP connections to your own server".
+  It adds 50% to the base price (~$53/mo on Essentials) and touches none of the
+  quotas above; its Token Vault allocation is a separate quota, easy to mistake
+  for the application limit.
+
+  Two parts of it are worth *watching* rather than buying. **Async
+  authorization (CIBA)** puts a human approval step in front of an agent
+  action, which is a far more interesting control for a future health/PHI
+  service than any IdP choice. **Agent Gateway** (listed as planned) covers
+  connecting to MCP servers with policy and auditing, which overlaps C0's
+  gateway hypothesis and would be a build-vs-buy input if it ships.
 - **GC grace window never expires (2026-08-25)**: `scripts/auth0-gc.sh` pass 2
   defers any DCR client that has tenant-log activity, but tests only for
   *existence* of a log row (`per_page=1`, then `length > 0`) rather than for
