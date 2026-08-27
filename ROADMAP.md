@@ -402,27 +402,89 @@ does **not** live in this repo — it arrives as an external image dependency
   domain's `/.well-known/oauth-authorization-server` carries both correctly
   and is the one MCP clients read.
 
-  **Issuer looks portable**, which is what (b) needs: RFC 8414 reports
+  **Issuer is portable**, which is what (b) needs: RFC 8414 reports
   `issuer: https://chlorinated-nerve-9228.customers.stytch.com`, a real origin
-  that a custom domain would replace. RS256 confirmed on the JWKS. RFC 8707 is
-  *not* advertised in the metadata — unconfirmed either way, still to be
-  settled by decoding a real token.
+  a custom domain would replace, and the decoded token agrees. RS256 confirmed.
+  One inconsistency worth knowing: the authorization response and the OIDC
+  `openid-configuration` document both report a schemeless
+  `iss: stytch.com/project-live-…`, which does not match the RFC 8414 value.
 
-  **Still unverified: the load-bearing claim.** Whether a CIMD authorization
-  accrues a persistent client entity. CIMD entities would materialize at
-  authorization time rather than at registration, so it cannot be reached
-  without the hosted authorize page and a Stytch user. Every other part of the
-  migration rationale is now evidence-backed; this one is not, and it is the
-  one the rationale rests on.
+  **(b) FAILS, and on the criterion that disqualified Keycloak.** A real token
+  was minted end to end — password login, consent via
+  `POST /v1/idp/oauth/authorize`, code exchanged at the project domain — and
+  its audience is Stytch's *project id*, not the resource:
 
-  **State left standing.** The project has DCR and CIMD enabled and its
-  authorization URL set to a `spike.mcp.nickawilliams.com` path that does not
-  resolve — no DNS record, no vhost, and no client holds the issuer, so it is
-  inert but not torn down. The 1Password item
-  `Infrastructure/stytch-project-mcp-spike` (project secret plus workspace
-  management key) and the `STYTCH_*` block in `.env` are likewise throwaway
-  and listed in that item's note. The probe script was deliberately kept out
-  of the repo.
+      aud: ["project-live-5c01e792-05e9-4ab4-a0ee-27cdb3424647"]
+
+  Identical with and without `resource` at the token endpoint. Four mechanisms
+  were checked before concluding, because a missed dashboard toggle is exactly
+  how this thread went wrong the first time:
+
+  - **RFC 8707 `resource`** — rejected outright at authorize (`unknown field`),
+    accepted-then-ignored at token, never advertised in RFC 8414 metadata.
+  - **Custom claim templates** — the dashboard states setting `aud` "results in
+    an error". Explicitly forbidden.
+  - **Project-level "Custom audience"** — works, but one static value for the
+    whole project.
+  - **`access_token_custom_audience` on the client** — *works*, appending to
+    the array: `aud: ["project-live-…", "https://spike.mcp…/"]`. Per **client**,
+    though, not per resource.
+
+  That last one is the near miss, and it fails for a reason worth recording:
+  one client gets one audience, so a client reaching three services is rejected
+  by two of them. DCR deduplication — the feature that made Stytch attractive —
+  *guarantees* this, since a client family submitting identical metadata
+  collapses to one entity. The two behaviours are in direct tension.
+  **Per-service isolation and multi-service clients are mutually exclusive
+  within one Stytch project.** The only route that restores the property is one
+  Stytch project per service, since `aud` is the project id.
+
+  The 2026-08-24 desk assessment claimed RFC 8707 was "supported, and
+  documented specifically for MCP … the per-service `audience_whitelist` model
+  in the Caddyfile would survive a move". It does not. That claim traced back
+  to secondhand sources; Stytch's own API reference describes `aud` as the
+  project id with custom audiences set on the client object.
+
+  **Verdict: do not migrate. The cap is cheaper than the alternatives.**
+  Screening the field on resource indicators first — the gate, since failing it
+  is disqualifying, where the entity cap has never actually blocked a
+  registration — no provider offers per-resource audiences *and* dynamic
+  registration *and* a free custom domain:
+
+  | Provider  | RFC 8707            | DCR/CIMD     | Hosted UI | Custom domain |
+  |-----------|---------------------|--------------|-----------|---------------|
+  | Auth0     | non-standard, works | yes          | yes       | free, in use  |
+  | Scalekit  | yes                 | yes, both    | yes       | $99/mo        |
+  | WorkOS    | yes                 | yes          | yes       | $99/mo        |
+  | Stytch    | no                  | best-in-class| no        | free          |
+  | Logto     | yes                 | in developmt | —         | —             |
+  | Keycloak  | no                  | CORS-blocked | —         | —             |
+
+  $99/mo is the market rate for resource indicators plus a custom domain, and
+  Auth0 Essentials is $35. Every provider clearing the hard criterion costs
+  roughly triple the upgrade the migration was meant to avoid, on top of a
+  re-consent across three client families. **Pay for Essentials if the cap ever
+  blocks a registration**; until then GC plus the log-recency fix keeps us under
+  it. Sources: mcp-auth.dev/provider-list, Scalekit MCP quickstart and pricing.
+
+  **Why the isolation is worth keeping** (asked, and worth writing down): all
+  three services are third-party code — getzep, an upstream stdio mail server,
+  an npm eBay server — and each receives the bearer token on every call. A
+  supply-chain compromise in any of them is the most probable failure in this
+  design, not an exotic one. Per-service audiences bound that to one service;
+  a shared audience would extend it to all mail and the whole memory graph. The
+  compose-network partitioning does *not* cover this path, since a compromised
+  package reaches the others through the public front door rather than the
+  internal network. Audience binding is the only control on it.
+
+  **Torn down 2026-08-27.** The `@spike` vhost block and `caddy/spike/` were
+  removed from `main` and the introducing commit rewritten out of history,
+  preserved as `archive/stytch-spike-2026-08`. Also deleted: the
+  `spike.mcp.nickawilliams.com` DNS record, the Stytch user, both probe client
+  sets, the project's authorization URL / DCR / CIMD settings, the SDK
+  authorized domain, the `Infrastructure/stytch-project-mcp-spike` 1Password
+  item, and the `STYTCH_*` block in `.env`. The probe script was never
+  committed.
 - **GC grace window never expires (2026-08-25)**: `scripts/auth0-gc.sh` pass 2
   defers any DCR client that has tenant-log activity, but tests only for
   *existence* of a log row (`per_page=1`, then `length > 0`) rather than for
