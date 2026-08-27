@@ -145,6 +145,12 @@ provider plumbing (checkout, registry login, runners). See `AGENTS.md`.
 
 ## Adding a service
 
+The steps below are the procedure. Before starting one, the
+`add-mcp-service` skill (`.claude/skills/`) screens an upstream against the
+platform's hard requirements — transport, arm64, credential expiry, secret
+basename collisions, entity budget — and stops on the ones that cannot be
+worked around. It defers to this section for the build itself.
+
 1. Create `services/<name>/compose.yaml` (its containers; relative paths are
    from `/opt/mcp`, e.g. `./services/<name>/config.yaml`, `./data/<dir>`),
    declaring and joining its own network. In the root `docker-compose.yaml`,
