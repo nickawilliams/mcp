@@ -18,8 +18,12 @@
  # portful redirect_uri at /authorize. Requires update:clients scope.
  #
  # Pass 2 — gc: deletes tpc_* clients that have zero user grants AND no
- # tenant-log activity in the retention window — a registration nothing
- # ever finished. Active clients always hold a grant, so they are never
+ # tenant-log activity newer than AUTH0_GC_GRACE_DAYS — a registration
+ # nothing ever finished. The window is compared against the newest log
+ # entry's timestamp; testing only that a log row exists never expires,
+ # which silently pinned a dead slot for weeks (see pass 2).
+ #
+ # Active clients always hold a grant, so they are never
  # touched; an in-flight registration deleted mid-flow simply re-registers
  # on the client's next attempt (DCR is automatic). CIMD registrations
  # also receive tpc_-prefixed client ids (the metadata URL lives in
@@ -39,6 +43,7 @@
 set -euo pipefail
 
 readonly TENANT="${AUTH0_GC_DOMAIN:-nickawilliams.us.auth0.com}"
+readonly GRACE_DAYS="${AUTH0_GC_GRACE_DAYS:-3}"
 readonly API="https://${TENANT}/api/v2"
 
 #@/private
@@ -83,6 +88,8 @@ auth0_gc::_token() {
  # @env     AUTH0_GC_CLIENT_ID      GC app client id (op://-sourced)
  # @env     AUTH0_GC_CLIENT_SECRET  GC app client secret (op://-sourced)
  # @env     AUTH0_GC_DOMAIN         Tenant domain [nickawilliams.us.auth0.com]
+ # @env     AUTH0_GC_GRACE_DAYS     Days of log activity that defer a
+ #                                  delete [3]
  #
  # @stdout                 One line per client examined or mutated
  # @stderr                 Error messages
@@ -145,7 +152,7 @@ auth0_gc() {
 
   # --- Pass 2: delete debris (zero grants + no recent log activity) ----------
   local deleted=0
-  local grants logs
+  local grants log_state
   while IFS= read -r cid; do
     grants="$(curl -sS "${auth[@]}" "${API}/grants?client_id=${cid}" \
       | jq 'length')"
@@ -153,15 +160,32 @@ auth0_gc() {
       echo "keep   ${cid} (grants=${grants})"
       continue
     fi
-    # Grace for in-flight flows: any log activity in the retention window
-    # (registration, auth attempt) means it may still complete — skip it
-    # this run; a truly dead registration goes quiet and is collected on
-    # the next.
-    logs="$(curl -sS "${auth[@]}" -G "${API}/logs" \
+    # Grace for in-flight flows: activity *within the window* means the
+    # registration may still complete, so skip it this run.
+    #
+    # This tests the newest entry's age, not merely that a row exists.
+    # Existence never expires: Auth0 keeps serving old entries, so a dead
+    # registration stays deferred forever and holds an application slot
+    # against the cap. Observed 2026-08-25 — tpc_51No… was still being
+    # deferred on a 2026-08-08 entry, 17 days after its last activity,
+    # despite this comment once promising it would "go quiet and be
+    # collected on the next" run.
+    #
+    # The age comparison lives in jq rather than date(1) because the two
+    # differ on relative-date flags (BSD -v vs GNU -d) and this runs from
+    # both a mac and the host. Fractional seconds are stripped because
+    # fromdateiso8601 rejects them.
+    log_state="$(curl -sS "${auth[@]}" -G "${API}/logs" \
       --data-urlencode "q=client_id:\"${cid}\"" \
-      --data-urlencode "per_page=1" | jq 'length')"
-    if (( logs > 0 )); then
-      echo "defer  ${cid} (recent activity, no grant yet)"
+      --data-urlencode "sort=date:-1" \
+      --data-urlencode "per_page=1" \
+      | jq -r --argjson days "${GRACE_DAYS}" '
+          if length == 0 then "none"
+          else (.[0].date | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601) as $t
+            | if (now - $t) < ($days * 86400) then "recent" else "stale" end
+          end')"
+    if [[ "${log_state}" == "recent" ]]; then
+      echo "defer  ${cid} (activity within ${GRACE_DAYS}d, no grant yet)"
       continue
     fi
     if (( dry_run )); then
@@ -169,7 +193,7 @@ auth0_gc() {
     else
       curl -sS -o /dev/null -w '' "${auth[@]}" -X DELETE "${API}/clients/${cid}" \
         || { auth0_gc::_err "failed to delete ${cid}"; return 1; }
-      echo "delete ${cid} (no grants, no activity)"
+      echo "delete ${cid} (no grants, ${log_state} activity)"
       deleted=$(( deleted + 1 ))
     fi
   done < <(jq -r '.[].client_id' <<<"${clients_json}")
