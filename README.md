@@ -56,10 +56,14 @@ The dependency arrow only points inward: `[ infrastructure/common ] <-- [ mcp ]`
 
 The repo is partitioned by concern: `terraform/` is all IaC — a root platform
 module (host, DNS, secrets) plus one shared module instantiated once per
-service — and `services/<name>/` is a service's runtime payload and docs. The repo root IS
-`/opt/mcp` on the host (a git checkout), so every tracked path is already at
-its delivered location. Future non-IaC codebases (e.g. an MCP gateway) slot
-in as new top-level directories.
+service — and `services/<name>/` is a service's runtime payload and docs. The
+repo root IS `/opt/mcp` on the host (a git checkout), so every tracked path is
+already at its delivered location.
+
+Build-time tooling slots in as a new top-level directory; `tools/icon/` is the
+one so far. Runtime code does not. An MCP gateway would arrive as an external
+image dependency like any other service, keeping this repo to composition —
+images, config, IaC (ROADMAP, repo decision 2026-07-21).
 
 ```
 mcp/

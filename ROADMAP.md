@@ -717,6 +717,44 @@ does **not** live in this repo — it arrives as an external image dependency
   until a gateway exists.
 - *Logged: 2026-07-21*
 
+### C7 — Trust domain for high-sensitivity services (health / PHI)
+- **Need**: a service holding protected health information should not share a
+  blast radius with an npm eBay client. Raised 2026-08-27 while weighing
+  whether per-service token isolation was worth preserving; the answer was
+  yes, but it also exposed the limit of what that isolation buys.
+- **v1 limitation**: audience binding bounds *token* blast radius — a
+  compromised service holds a token good only for itself — but says nothing
+  about *host* blast radius. All services share one EC2 box, one Caddy, one
+  docker daemon, and one `.env` carrying every service's secrets, flattened
+  there by `refresh.sh`. Compose networks isolate container-to-container, and
+  audiences isolate tokens, but a host-level compromise is above both. Today
+  that ceiling is acceptable because the worst case is email and a memory
+  graph; PHI changes the calculus, and unlike the other two it carries
+  external obligations.
+- **Candidate v2 mechanism**: a second host in its own trust domain — its own
+  EC2 instance, its own Caddy, its own SSM path prefix, so the shared `.env`
+  never carries its secrets. Reuses everything else unchanged: the same
+  `modules/service` surface, the same Auth0 issuer and per-service audiences,
+  the same DNS pattern. Roughly the cost of a second small instance plus a
+  second terraform workspace. A weaker variant — same host, separate docker
+  daemon or a rootless runtime — buys less and complicates delivery, since the
+  repo root *is* the checkout.
+- **Trigger to build**: the health service becoming real. Deciding this before
+  it lands is much cheaper than migrating it afterwards, because moving a
+  service across trust domains is a re-consent event for every client family
+  holding a grant against it.
+- **Caveats**: a second host doubles the patching and monitoring surface for a
+  userbase of one, and does not help if the *client* is compromised — Claude
+  Code legitimately holds grants against both domains, which no amount of
+  server-side partitioning addresses. Also worth noting a hosted issuer is
+  what keeps signing keys outside both blast radii; this entry is an argument
+  against self-hosting the authorization server on either host (see the
+  self-hosting entry under C4).
+- **Interim (v1) mitigation**: none needed — no such service exists yet. The
+  point of logging it now is that the decision has a natural moment, and that
+  moment is before the first PHI byte lands, not after.
+- *Logged: 2026-08-27*
+
 ---
 
 ## Open questions
