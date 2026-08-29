@@ -41,24 +41,3 @@ resource "onepassword_item" "bearer" {
   tags        = local.op_tags
   section_map = local.op_metadata
 }
-
-# The Auth0 GC maintenance credential (see auth0.tf), read by the Makefile as
-# op://Infrastructure/auth0-client-mcp-gc/{username,password}. The secret is
-# whatever Auth0 already holds — auth0_client_credentials.gc leaves it unset
-# and reads it back — so adopting this item did not rotate it. Rotate with:
-#   terraform apply -replace=auth0_client_credentials.gc
-resource "onepassword_item" "auth0_gc" {
-  vault    = data.onepassword_vault.infrastructure.uuid
-  title    = "auth0-client-mcp-gc"
-  category = "login"
-  url      = "https://${local.common.auth0_domain}/"
-  username = auth0_client.gc.client_id
-  password = auth0_client_credentials.gc.client_secret
-
-  # The scope list this item used to carry by hand now lives in auth0.tf; what
-  # is left is the provenance a reader of the vault cannot derive from code.
-  note_value = "Management API client for scripts/auth0-gc.sh. Minted 2026-08-09 via the auth0 CLI; adopted into terraform (mcp/terraform/auth0.tf) 2026-08-17, which is now the source of truth for its scopes."
-
-  tags        = local.op_tags
-  section_map = local.op_metadata
-}

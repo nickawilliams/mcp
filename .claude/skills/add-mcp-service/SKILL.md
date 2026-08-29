@@ -62,8 +62,9 @@ options, and a recommendation.
 5. **Entity budget.** Each service costs one Auth0 resource server and one
    application slot's worth of headroom. Free tier caps both at 10;
    self-service (Essentials) at 100. Check the current count before adding —
-   `make maintenance/gc GC=--dry-run` clears DCR debris and reports what is
-   left. If adding this service would crowd the cap, say so before building.
+   `make maintenance/gc GC=--dry-run`, run from `~/Projects/infrastructure`,
+   clears DCR debris and reports what is left. If adding this service would
+   crowd the cap, say so before building.
 
 6. **What the code gets to reach.** This is third-party code that will
    receive a bearer token on every call and run on the same host as mail

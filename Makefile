@@ -27,7 +27,7 @@ EBAY_MCP_REF ?= feat/browse-item-search
 default: help
 
 .PHONY: default init fmt validate plan apply ssm logs deploy \
-		maintenance/gc maintenance/cimd-pending maintenance/ebay-token \
+		maintenance/ebay-token \
 		publish/mail-mcp publish/ebay-mcp icons help vars _print-var
 
 # --- Terraform ---------------------------------------------------------------
@@ -96,18 +96,10 @@ deploy:
 		--output json
 
 # --- Maintenance -------------------------------------------------------------
-# Auth0 DCR mints a permanent tpc_* app per registration; the free plan caps
-# Applications at 10. maintenance/gc clears debris; maintenance/cimd-pending
-# surfaces CIMD clients blocked because their metadata URL is not yet in
-# terraform. Both use the same least-privilege GC credential (op://-sourced).
-
-## Delete never-authorized Auth0 DCR client debris (GC=--dry-run to preview)
-maintenance/gc:
-	op run --env-file=.env -- scripts/auth0-gc.sh $(GC)
-
-## Report CIMD metadata URLs blocked by Auth0; add each to terraform cimd_clients
-maintenance/cimd-pending:
-	op run --env-file=.env -- scripts/auth0-cimd-pending.sh
+# The Auth0 tenant sweeps that used to live here (maintenance/gc,
+# maintenance/cimd-pending) moved to ~/Projects/infrastructure on 2026-08-27,
+# with the credential they share: both act on the tenant, which that repo owns.
+# What remains is this stack's own upstream credential.
 
 ## Re-mint the eBay user refresh token (browser consent) into 1Password
 maintenance/ebay-token:
