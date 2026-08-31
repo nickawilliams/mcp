@@ -135,10 +135,40 @@ does **not** live in this repo — it arrives as an external image dependency
   aggregation layer exists.
 - **Candidate v2 mechanism**: MCP gateway fans out to multiple backends and
   presents a merged tool list / routes calls by tool namespace.
-- **Trigger to build**: service #2+ where a single client wants both.
-- **Caveats**: tool-name collisions across services need a namespacing scheme;
-  aggregation can obscure per-service auth/rate boundaries — decide what stays
-  per-service.
+- **Trigger to build**: service #2+ where a single client wants both. Also
+  Auth0 app-cap pressure (2026-08-31): every ChatGPT connector costs one app
+  against the free plan's 10-app limit, at 8/10 with one slot consumed per
+  new service; one gateway connector removes that scaling term entirely,
+  making C3 the alternative to a $35/mo Essentials bump bought for headroom
+  in a single dimension.
+- **Caveats**: tool-name collisions across services need a namespacing scheme.
+  Security constraints (worked out 2026-08-31 — these are design
+  requirements, not options, or aggregation silently undoes the per-service
+  partitioning):
+  - **No token pass-through.** The gateway terminates the client's token and
+    mints per-service downstream credentials (token exchange or
+    client-credentials per backend audience). If it instead forwards its
+    merged-audience token, every backend routinely sees a token valid for
+    all services, and one compromised backend replays it laterally through
+    the front door — exactly the bleed per-service audiences exist to stop.
+    Backends stay unchanged: own audience, own validation.
+  - **The gateway becomes the crown jewels.** It holds a credential that can
+    reach every audience, so compromising the gateway component equals
+    compromising everything in token terms. Not much worse than today's
+    single-host ceiling (C7), but it sharpens C6's case for the gateway
+    being a minimal, separately-maintained image.
+  - **Client-side granularity collapses.** A stolen client token today is
+    scoped to one service; a stolen gateway-audience token covers the
+    union. Per-service scopes inside the gateway audience could restore
+    granularity, but MCP clients request whatever is advertised, so one
+    consent covers everything in practice. Accepted knowingly for a
+    userbase of one.
+  - **Aggregation stops at trust-domain boundaries.** One gateway per
+    domain; a future PHI service (C7) never sits behind the shared gateway
+    — spanning domains with one client token and one gateway credential
+    rebuilds the bridge C7 exists to cut. The second domain keeps its own
+    connector, which slightly dilutes the app-cap benefit above and is
+    fine.
 - **Interim (v1) mitigation**: configure each service as its own MCP entry in the
   client (host-per-service already makes this clean).
 - *Logged: 2026-07-20*
