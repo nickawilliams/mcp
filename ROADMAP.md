@@ -774,6 +774,43 @@ does **not** live in this repo — it arrives as an external image dependency
   moment is before the first PHI byte lands, not after.
 - *Logged: 2026-08-27*
 
+### C8 — Cross-vendor plugin marketplace advertising the services
+- **Need**: a marketplace repo (or path in this one) whose `marketplace.json`
+  advertises each MCP service as an installable plugin, consumable by both
+  Claude Code and ChatGPT/Codex. One catalog would make the services
+  installable by other people or by future-me on a fresh machine, instead of
+  hand-configuring each client.
+- **v1 limitation**: not a v1 gap so much as a vendor one. The manifest
+  convention is already cross-vendor — Claude Code reads
+  `.claude-plugin/marketplace.json`, OpenAI reads
+  `.agents/plugins/marketplace.json` and accepts the Claude path as
+  legacy-compatible; multi-harness repos (e.g. wshobson/agents) ship dual
+  thin manifests over one content tree. But the payoff is asymmetric
+  (verified 2026-08-31): a plugin bundling an MCP server config is fully
+  declarative in Claude Code — install triggers the OAuth flow through its
+  stable CIMD client — while ChatGPT's `.app.json` can only *reference* a
+  connector pre-registered by hand in developer mode. The one manual step
+  worth eliminating is the one the manifest cannot express.
+- **Candidate v2 mechanism**: a marketplace directory with dual manifests
+  (`.claude-plugin/` + `.agents/plugins/`) listing one plugin per service:
+  icon, description, and a bundled `.mcp.json` pointing at the service URL.
+  Portable content only — skills/commands/agents as markdown; no hooks or
+  vendor-specific lifecycle.
+- **Trigger to build**: a second person wants to use these services, or
+  OpenAI ships a declarative connector spec (URL + auth mode in the
+  manifest, registration at install) — that closes the asymmetry and makes
+  one catalog serve both vendors fully. Recheck when the next service is
+  added; the plugin platform is weeks old and moving.
+- **Caveats**: for a solo operator today it is a repo to maintain in
+  exchange for automating the already-cheap side (Claude clients need no
+  per-service registration at all). ChatGPT users still hit the manual
+  connector step regardless. Vendor manifest schemas may drift; dual
+  manifests hedge but double the surface.
+- **Interim (v1) mitigation**: the add-mcp-service skill's Phase 3 policy —
+  Claude clients connect with zero registration; ChatGPT connectors go via
+  the advanced-pane DCR toggle.
+- *Logged: 2026-08-31*
+
 ---
 
 ## Open questions
