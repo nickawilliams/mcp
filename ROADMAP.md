@@ -202,9 +202,15 @@ does **not** live in this repo — it arrives as an external image dependency
   | Whose limitation | **Auth0** — mints a permanent app per registration, caps apps at 10 | **Auth0** — advertises CIMD but ships no just-in-time acceptance |
 
   The switch is one-way: `client_id_metadata_document_supported` makes capable
-  clients skip DCR entirely, with no fallback and a hard fail. Enabling CIMD
-  *replaces* a working path rather than adding one, so every CIMD-capable
-  client breaks until its URL is registered.
+  clients skip DCR entirely, with no automatic fallback and a hard fail.
+  Enabling CIMD *replaces* a working path rather than adding one, so every
+  CIMD-capable client breaks until its URL is registered. One manual escape
+  hatch exists (observed 2026-08-31): ChatGPT's per-connector "advanced"
+  settings pane can switch a connector from the CIMD default to DCR, which
+  registers self-serve — no `cimd_clients` entry, no `Unknown client` dance —
+  but still mints a `tpc_*` app per connector against the same cap, and
+  interrupted or orphaned flows become debris for the GC sweep. The eBay
+  connector was added this way.
 
   One client-side exception to "once per client app": **ChatGPT mints a
   per-connector metadata URL** (`https://chatgpt.com/oauth/<id>/client.json`,
