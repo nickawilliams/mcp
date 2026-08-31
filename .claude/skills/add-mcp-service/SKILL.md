@@ -119,7 +119,19 @@ decisions in hand. Copy the closest existing service as scaffold:
   `WWW-Authenticate` header pointing at the metadata document.
 - `curl .../.well-known/oauth-protected-resource` → `resource` must be the
   slashed form and byte-identical to the terraform identifier.
-- Connect a real client and confirm the tool list.
+- Connect a real client and confirm the tool list. Client registration
+  policy, decided 2026-08-31 (history in ROADMAP § "DCR vs CIMD"):
+  - **Claude Code / claude.ai** — nothing to register. Their stable
+    app-level CIMD URLs are already in the infrastructure repo's
+    `cimd_clients`, tenant-wide.
+  - **ChatGPT** — add the connector with its "advanced" settings pane
+    switched from the CIMD default to **DCR**. ChatGPT mints a fresh CIMD
+    URL per connector, so the default hard-fails with `Unknown client`
+    until that URL is hand-registered in the infrastructure repo, and buys
+    nothing over DCR: either way costs one app slot per connector. DCR
+    self-registers with no terraform entry. Revisit only if Auth0 ships
+    just-in-time CIMD acceptance or OpenAI moves to a stable app-level
+    URL — then prefer CIMD again.
 
 ## Traps
 

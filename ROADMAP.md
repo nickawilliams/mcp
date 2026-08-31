@@ -223,6 +223,19 @@ does **not** live in this repo — it arrives as an external image dependency
   failed with `Unknown client`; confirmed 2026-08-31 when adding a Graphiti
   connector minted a second, distinct metadata URL.
 
+  **Policy (decided 2026-08-31)**: CIMD wherever the client presents a
+  stable app-level URL (the Claude clients today); **DCR for ChatGPT
+  connectors**, via the advanced-pane toggle. For ChatGPT the CIMD benefits
+  never materialize — the URL churns per connector and Auth0 requires
+  hand-registration — so CIMD there is a terraform entry with nothing in
+  return, while DCR self-registers at the same one-app-per-connector cost.
+  Existing mail and graphiti connectors stay on CIMD until something else
+  forces a re-add; take the DCR path at that moment rather than migrating
+  proactively. Revisit if Auth0 ships just-in-time CIMD acceptance or
+  OpenAI moves to stable app-level URLs — either flips the answer back to
+  CIMD. The add-mcp-service skill's Phase 3 carries the operational
+  version of this policy.
+
   **When Auth0 ships just-in-time CIMD, do not read it as pure good news.**
   CIMD changes the *unit* of cap growth (per client app instead of per
   machine); it does not raise the ceiling, because every CIMD registration
