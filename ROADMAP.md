@@ -130,7 +130,20 @@ does **not** live in this repo — it arrives as an external image dependency
 
 ### C3 — Tool aggregation (one endpoint, many services)
 - **Need**: a client connects once and sees the union of tools across all MCP
-  services, instead of configuring N endpoints.
+  services, instead of configuring N endpoints. Just as much (argued
+  2026-08-31): **management convergence**. Per-service state today is smeared
+  across client apps (Claude Code, claude.ai, ChatGPT) times devices, each
+  with a different and mostly weak per-server UI — none of it greppable,
+  alarmable, or versioned. A self-owned gateway turns connector state,
+  per-backend health, and tool exposure into logs, metrics, and config in
+  the one place already operated — the same shape as the rest of the stack
+  (one Caddy, one terraform, one host). Two client-side "losses" become
+  wins here: instructions-merging becomes deliberate authorship of one
+  instructions document instead of inheriting N upstream blobs, and
+  client-side per-service toggles are replaced by gateway-side tool
+  profiles, which are both centralized and stronger (they can trim the
+  model's tool count below the per-server floor, which no client toggle
+  can).
 - **v1 limitation**: v1 is deliberately host-per-service (`<svc>.mcp.…`); no
   aggregation layer exists.
 - **Candidate v2 mechanism**: MCP gateway fans out to multiple backends and
@@ -169,6 +182,19 @@ does **not** live in this repo — it arrives as an external image dependency
     rebuilds the bridge C7 exists to cut. The second domain keeps its own
     connector, which slightly dilutes the app-cap benefit above and is
     fine.
+
+  Usability residuals (2026-08-31) — the two costs that survive the
+  management-convergence argument in the Need:
+  - **Availability coupling.** Observability converging is pure win;
+    failure converging is not. A gateway restart, hang, or OAuth
+    re-consent interrupts every service on every client at once, where
+    today it interrupts one. The gateway's own stability becomes the SLO
+    that matters — another push toward C6's minimal, boring,
+    separately-versioned image.
+  - **Attribution loss in interactive flows.** Elicitation, sampling, and
+    permission prompts name the gateway, not the backend service, and no
+    gateway-side work recovers that. A shrug for a userbase of one who
+    knows the topology; real if anyone else ever connects.
 - **Interim (v1) mitigation**: configure each service as its own MCP entry in the
   client (host-per-service already makes this clean).
 - *Logged: 2026-07-20*
