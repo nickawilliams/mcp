@@ -214,9 +214,8 @@ does **not** live in this repo — it arrives as an external image dependency
   burns another `cimd_clients` entry and another app slot. That is OpenAI's
   behavior, not Auth0's; claude.ai and Claude Code use stable app-level URLs
   and behave as documented. Observed 2026-08-24 when the ChatGPT app install
-  failed with `Unknown client`; inferred from the shared id between
-  `client_id` and `redirect_uris`, not yet confirmed against a second
-  connector.
+  failed with `Unknown client`; confirmed 2026-08-31 when adding a Graphiti
+  connector minted a second, distinct metadata URL.
 
   **When Auth0 ships just-in-time CIMD, do not read it as pure good news.**
   CIMD changes the *unit* of cap growth (per client app instead of per
