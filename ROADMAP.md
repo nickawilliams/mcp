@@ -147,7 +147,25 @@ does **not** live in this repo — it arrives as an external image dependency
 - **v1 limitation**: v1 is deliberately host-per-service (`<svc>.mcp.…`); no
   aggregation layer exists.
 - **Candidate v2 mechanism**: MCP gateway fans out to multiple backends and
-  presents a merged tool list / routes calls by tool namespace.
+  presents a merged tool list / routes calls by tool namespace. Added
+  2026-08-31: **progressive discovery** — each service collapses to one
+  entry tool (name plus a one-line summary); the model drills in
+  (`expand(<svc>)`) and the gateway pushes the service's full typed tool
+  list via `tools/listChanged`. A session that never touches email pays
+  one context entry for Mail instead of every email operation. This is the
+  proven deferred-loading pattern (Claude Code does it client-side for
+  large servers; the API ships a tool-search tool) done server-side, so it
+  reaches clients with no deferral of their own — notably ChatGPT, the
+  client that motivated the gateway. It also supersedes static tool
+  profiles: the model provisions its own subset per session. Constraints:
+  keep real per-tool schemas via expand + listChanged rather than a
+  weakly-typed `svc(operation, args)` facade, which hurts call accuracy;
+  verify ChatGPT honors mid-session list changes before counting this
+  gain for that connector; collapsed services are only as discoverable as
+  their one-line summaries, so those and the gateway's authored
+  instructions carry real weight; and expansion state makes the gateway
+  per-connection stateful (trivially, but keep it away from the
+  credential path).
 - **Trigger to build**: service #2+ where a single client wants both. Also
   Auth0 app-cap pressure (2026-08-31): every ChatGPT connector costs one app
   against the free plan's 10-app limit, at 8/10 with one slot consumed per
