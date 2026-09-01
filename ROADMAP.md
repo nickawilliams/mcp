@@ -272,7 +272,7 @@ does **not** live in this repo — it arrives as an external image dependency
   | How a client registers | Self-registers at `/oidc/register`, just-in-time, once per install/machine | Its metadata URL *is* the `client_id`; must be pre-registered in terraform `cimd_clients`, once per client app |
   | Limit you hit | 10-application cap → `403 limit of entities`; interrupted flows leave debris | `invalid_request: Unknown client: <url>` until the entry exists |
   | Diagnose with | `make maintenance/gc GC=--dry-run` | `make maintenance/cimd-pending` |
-  | Where from | `~/Projects/infrastructure` (moved there 2026-08-27) | same |
+  | Where from | the infrastructure repo (moved there 2026-08-27) | same |
   | Whose limitation | **Auth0** — mints a permanent app per registration, caps apps at 10 | **Auth0** — advertises CIMD but ships no just-in-time acceptance |
 
   The switch is one-way: `client_id_metadata_document_supported` makes capable

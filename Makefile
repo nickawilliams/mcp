@@ -97,7 +97,7 @@ deploy:
 
 # --- Maintenance -------------------------------------------------------------
 # The Auth0 tenant sweeps that used to live here (maintenance/gc,
-# maintenance/cimd-pending) moved to ~/Projects/infrastructure on 2026-08-27,
+# maintenance/cimd-pending) moved to the infrastructure repo on 2026-08-27,
 # with the credential they share: both act on the tenant, which that repo owns.
 # What remains is this stack's own upstream credential.
 

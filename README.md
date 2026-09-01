@@ -45,7 +45,7 @@ Caddy writes a structured access log (audit trail) to docker logs.
 
 ## This repo vs. the infrastructure core
 
-`~/Projects/infrastructure` is the neutral core: it owns the `nickawilliams.com`
+The infrastructure repo is the neutral core: it owns the `nickawilliams.com`
 root zone and exposes it as `zone_id`. This repo consumes that hook via
 `terraform_remote_state` and is otherwise self-contained — it **owns its own
 `mcp.nickawilliams.com` child zone and the NS delegation into root**, so a

@@ -87,8 +87,7 @@ services:
       - MAIL_SMTP_GMAIL_SECURE=starttls
       - MAIL_SMTP_GMAIL_USER=rogwilco@gmail.com
       - MAIL_SMTP_GMAIL_PASS=${MAIL_GMAIL_PASSWORD}
-      # work — Clearstory Gmail (NOTE: ~/.profile-mail-mcp wrongly points
-      # SMTP at imap.gmail.com; corrected here)
+      # work — Clearstory Gmail
       - MAIL_IMAP_WORK_HOST=imap.gmail.com
       - MAIL_IMAP_WORK_USER=nwilliams@clearstory.build
       - MAIL_IMAP_WORK_PASS=${MAIL_WORK_PASSWORD}
