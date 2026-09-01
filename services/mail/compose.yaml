@@ -25,8 +25,9 @@
 # root, NOT from this file's directory. Only Caddy shares the `mail`
 # network — other services cannot reach the unauthenticated bridge.
 #
-# Plain account config lives here; passwords interpolate from the host .env
-# (SSM SecureStrings, one per account, fanned out to IMAP+SMTP pairs).
+# Plain account config lives here; passwords and OAuth refresh tokens
+# interpolate from the host .env (SSM SecureStrings, one per credential,
+# fanned out to the account's IMAP/SMTP/Graph vars).
 # SMTP Sent-folder saving relies on the provider-aware defaults (v0.4.8+):
 # Migadu (generic SMTP) auto-appends, Gmail is saved server-side.
 services:
@@ -86,6 +87,25 @@ services:
       - MAIL_SMTP_WORK_SECURE=starttls
       - MAIL_SMTP_WORK_USER=nwilliams@clearstory.build
       - MAIL_SMTP_WORK_PASS=${MAIL_WORK_PASSWORD}
+      # microsoft — Live.com personal. Microsoft retired basic auth (and app
+      # passwords) for personal accounts in 2024, so IMAP authenticates with
+      # XOAUTH2 and sending goes through the Graph API — two refresh tokens,
+      # because Microsoft refuses to mix outlook.office.com and
+      # graph.microsoft.com scopes in one token. Mint both with
+      # `make maintenance/microsoft-tokens` (~90-day MSA lifetime). No SMTP
+      # pair: Microsoft blocks SMTP AUTH for personal accounts outright. The
+      # client id is Thunderbird's public one (see mail-mcp's setup guide),
+      # not a secret.
+      - MAIL_IMAP_MICROSOFT_HOST=outlook.office365.com
+      - MAIL_IMAP_MICROSOFT_USER=nickawilliams@live.com
+      - MAIL_OAUTH2_MICROSOFT_PROVIDER=microsoft
+      - MAIL_OAUTH2_MICROSOFT_CLIENT_ID=9e5f94bc-e8a4-4e73-b8be-63364c29d753
+      - MAIL_OAUTH2_MICROSOFT_CLIENT_SECRET=none
+      - MAIL_OAUTH2_MICROSOFT_REFRESH_TOKEN=${MAIL_MICROSOFT_IMAP_TOKEN}
+      - MAIL_GRAPH_MICROSOFT_PROVIDER=microsoft
+      - MAIL_GRAPH_MICROSOFT_CLIENT_ID=9e5f94bc-e8a4-4e73-b8be-63364c29d753
+      - MAIL_GRAPH_MICROSOFT_CLIENT_SECRET=none
+      - MAIL_GRAPH_MICROSOFT_REFRESH_TOKEN=${MAIL_MICROSOFT_GRAPH_TOKEN}
     ports:
       - "127.0.0.1:8080:8080" # debug via SSM tunnel only (8000 is graphiti's)
     healthcheck:

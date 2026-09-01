@@ -27,7 +27,7 @@ EBAY_MCP_REF ?= feat/browse-item-search
 default: help
 
 .PHONY: default init fmt validate plan apply ssm logs deploy \
-		maintenance/ebay-token \
+		maintenance/ebay-token maintenance/microsoft-tokens \
 		publish/mail-mcp publish/ebay-mcp icons help vars _print-var
 
 # --- Terraform ---------------------------------------------------------------
@@ -104,6 +104,13 @@ deploy:
 ## Re-mint the eBay user refresh token (browser consent) into 1Password
 maintenance/ebay-token:
 	op run --env-file=.env -- scripts/ebay-user-token.sh
+
+# No `op run` wrapper: the client id is a baked-in public constant, and the
+# 1Password write-back uses the shell `op` (desktop-app auth).
+
+## Mint the mail service's Microsoft OAuth refresh tokens into 1Password
+maintenance/microsoft-tokens:
+	scripts/microsoft-mail-tokens.sh
 
 # --- Service images ----------------------------------------------------------
 # Upstream publishes no linux/arm64 artifact, so we build and publish our own

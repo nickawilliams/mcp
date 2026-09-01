@@ -81,6 +81,24 @@ variable "mail_password_work" {
   sensitive   = true
 }
 
+# The 'microsoft' account (Live.com personal) has no password: Microsoft
+# retired basic auth for personal accounts, so it runs on two OAuth refresh
+# tokens with disjoint scopes (IMAP XOAUTH2 vs Graph Mail.Send). MSA refresh
+# tokens live ~90 days; re-mint with `make maintenance/microsoft-tokens`,
+# then `make apply && make deploy`.
+
+variable "mail_token_microsoft_imap" {
+  description = "OAuth2 refresh token for the 'microsoft' account's IMAP XOAUTH2"
+  type        = string
+  sensitive   = true
+}
+
+variable "mail_token_microsoft_graph" {
+  description = "OAuth2 refresh token for the 'microsoft' account's Graph sending"
+  type        = string
+  sensitive   = true
+}
+
 # eBay developer-app credentials for the ebay service (op://-sourced via .env
 # as TF_VAR_*; same scalar-not-map constraint as the mail passwords). The
 # refresh token comes from the ebay-mcp package's local setup wizard.

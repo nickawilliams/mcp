@@ -41,15 +41,18 @@ module "mail" {
   zone_id     = aws_route53_zone.mcp.zone_id
   host_ip     = aws_eip.host.public_ip
 
-  # One password per mail account; the keys are the env var names that
+  # One secret per mail account credential (a password, or an OAuth refresh
+  # token for the Microsoft account); the keys are the env var names that
   # services/mail/compose.yaml interpolates. That file owns the rest of each
   # account's config (hosts, users, ports), so adding an account is a change
   # in both places.
   secrets = {
-    MAIL_DEFAULT_PASSWORD  = var.mail_password_default
-    MAIL_ACCOUNTS_PASSWORD = var.mail_password_accounts
-    MAIL_GMAIL_PASSWORD    = var.mail_password_gmail
-    MAIL_WORK_PASSWORD     = var.mail_password_work
+    MAIL_DEFAULT_PASSWORD      = var.mail_password_default
+    MAIL_ACCOUNTS_PASSWORD     = var.mail_password_accounts
+    MAIL_GMAIL_PASSWORD        = var.mail_password_gmail
+    MAIL_WORK_PASSWORD         = var.mail_password_work
+    MAIL_MICROSOFT_IMAP_TOKEN  = var.mail_token_microsoft_imap
+    MAIL_MICROSOFT_GRAPH_TOKEN = var.mail_token_microsoft_graph
   }
 }
 
