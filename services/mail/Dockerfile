@@ -2,7 +2,7 @@
 # Upstream publishes no linux/arm64 artifact, so the binary comes from our
 # own GHCR build of the pinned upstream tag (make publish/mail-mcp). Both
 # images pinned; bump via the FROM lines only.
-FROM ghcr.io/nickawilliams/mail-mcp:v0.4.9@sha256:35867f74795f578023bfcb88b7fdb504366f3f99ec706c18277b286b0fe40061 AS mail
+FROM ghcr.io/nickawilliams/mail-mcp:v0.4.10@sha256:fc7f0be2c6b2febc1830134f065081cd3ffcd8f74694b8a47145026e522a4456 AS mail
 
 FROM supercorp/supergateway:3.4.3
 COPY --from=mail /mail-imap-mcp-rs /usr/local/bin/mail-imap-mcp-rs

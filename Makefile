@@ -9,7 +9,7 @@ SHELL := /usr/bin/env bash
 TF := op run --env-file=.env -- terraform -chdir=terraform
 
 # Service images (published to GHCR; consumed by services/*/Dockerfile)
-MAIL_MCP_VERSION ?= v0.4.9
+MAIL_MCP_VERSION ?= v0.4.10
 MAIL_MCP_IMAGE := ghcr.io/nickawilliams/mail-mcp
 MAIL_MCP_REPO := https://github.com/tecnologicachile/mail-mcp.git
 
