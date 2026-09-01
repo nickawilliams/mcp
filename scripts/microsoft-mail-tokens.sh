@@ -99,11 +99,19 @@ microsoft_mail_tokens::_mint() {
   interval="$(jq -r '.interval // 5' <<<"${dc_response}")"
   expires_in="$(jq -r '.expires_in // 900' <<<"${dc_response}")"
 
+  # Convenience on macOS: the code lands in the clipboard, ready to paste
+  # into the sign-in page. Elsewhere pbcopy is absent and the code is
+  # simply typed from the terminal.
+  local code_hint=""
+  if command -v pbcopy &> /dev/null; then
+    printf '%s' "${user_code}" | pbcopy && code_hint=" (copied to clipboard)"
+  fi
+
   {
     echo ""
     echo "=== ${label} ==="
     echo "Sign in as ${ACCOUNT} at: ${verification_uri}"
-    echo "Enter code: ${user_code}"
+    echo "Enter code: ${user_code}${code_hint}"
     echo "(waiting for sign-in, up to $(( expires_in / 60 )) minutes...)"
   } >&2
   open "${verification_uri}"
