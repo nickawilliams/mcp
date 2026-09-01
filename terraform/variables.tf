@@ -69,6 +69,12 @@ variable "mail_password_accounts" {
   sensitive   = true
 }
 
+variable "mail_password_lost" {
+  description = "Password for the 'lost' mail account (Migadu lost@)"
+  type        = string
+  sensitive   = true
+}
+
 variable "mail_password_gmail" {
   description = "App password for the 'gmail' mail account (personal Gmail)"
   type        = string

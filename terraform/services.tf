@@ -49,6 +49,7 @@ module "mail" {
   secrets = {
     MAIL_DEFAULT_PASSWORD      = var.mail_password_default
     MAIL_ACCOUNTS_PASSWORD     = var.mail_password_accounts
+    MAIL_LOST_PASSWORD         = var.mail_password_lost
     MAIL_GMAIL_PASSWORD        = var.mail_password_gmail
     MAIL_WORK_PASSWORD         = var.mail_password_work
     MAIL_MICROSOFT_IMAP_TOKEN  = var.mail_token_microsoft_imap

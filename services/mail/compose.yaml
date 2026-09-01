@@ -70,6 +70,15 @@ services:
       - MAIL_SMTP_ACCOUNTS_SECURE=tls
       - MAIL_SMTP_ACCOUNTS_USER=accounts@nickawilliams.com
       - MAIL_SMTP_ACCOUNTS_PASS=${MAIL_ACCOUNTS_PASSWORD}
+      # lost — Migadu lost@
+      - MAIL_IMAP_LOST_HOST=imap.migadu.com
+      - MAIL_IMAP_LOST_USER=lost@nickawilliams.com
+      - MAIL_IMAP_LOST_PASS=${MAIL_LOST_PASSWORD}
+      - MAIL_SMTP_LOST_HOST=smtp.migadu.com
+      - MAIL_SMTP_LOST_PORT=465
+      - MAIL_SMTP_LOST_SECURE=tls
+      - MAIL_SMTP_LOST_USER=lost@nickawilliams.com
+      - MAIL_SMTP_LOST_PASS=${MAIL_LOST_PASSWORD}
       # gmail — personal (app password)
       - MAIL_IMAP_GMAIL_HOST=imap.gmail.com
       - MAIL_IMAP_GMAIL_USER=rogwilco@gmail.com
